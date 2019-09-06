@@ -1,0 +1,11 @@
+ObjectPose pose
+ObjectSize size
+ObjectCollision collision
+uint16 id
+uint16 maintain_count
+uint16 type
+float64[] x_velo
+float64[] y_velo
+float64 speed
+float64[] theta
+uint16 theta_count
