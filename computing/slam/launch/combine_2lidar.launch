@@ -1,0 +1,22 @@
+<launch>	
+	<node name="combine_2lidar_node" pkg="slam" type="combine_2lidar_node" output="screen">
+		
+		<param name="base_points_topic_name" value="ns2/velodyne_points" />
+		<param name="input_points_topic_name" value="ns1/velodyne_points" />
+
+		<param name="btoi_x" value="-0.169831" />
+		<param name="btoi_y" value="1.03738" />
+		<param name="btoi_z" value="-0.00400942" />
+		<param name="btoi_roll" value="-0.00955817" />
+		<param name="btoi_pitch" value="-0.00141394" />
+		<param name="btoi_yaw" value="0.0625018" />
+
+<!-- 		<param name="btoi_x" value="-0.1" />
+		<param name="btoi_y" value="1.0" />
+		<param name="btoi_z" value="-0.0116245" />
+		<param name="btoi_roll" value="-0.00955817" />
+		<param name="btoi_pitch" value="-0.00141394" />
+		<param name="btoi_yaw" value="0.229785" /> -->
+	</node>
+</launch>
+

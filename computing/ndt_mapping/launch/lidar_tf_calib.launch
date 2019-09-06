@@ -1,0 +1,22 @@
+<launch>	
+	<node name="lidar_tf_calib" pkg="ndt_mapping" type="lidar_tf_calib" output="screen">
+		
+		<param name="points_topic_name" value="vlp_r/velodyne_points" />
+		<param name="base_points_topic_name" value="vlp_t/velodyne_points" />
+	
+		<param name="ndt_res" value="1.0" />
+		<param name="max_iter" value="200" />
+		<param name="step_size" value="0.1" />
+		<param name="trans_eps" value="0.01" />
+		<param name="voxel_leaf_size" value="0.5" />
+
+		<param name="tf_x" value="0.0" />
+		<param name="tf_y" value="0.0" />
+		<param name="tf_z" value="0.0" />
+		<param name="tf_roll" value="0.0" />
+		<param name="tf_pitch" value="0.0" />
+		<!-- <param name="tf_yaw" value="-0.21" /> -->
+		<param name="tf_yaw" value="0.0" />
+
+	</node>
+</launch>
