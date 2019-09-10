@@ -1,21 +1,21 @@
 <launch>	
 	<node name="combine_3lidar_node" pkg="slam" type="combine_3lidar_node" output="screen">
 		
-		<param name="top_points_topic_name" value="vlp_cloud/sync_t " />
-		<param name="left_points_topic_name" value="vlp_cloud/sync_l " />
-		<param name="right_points_topic_name" value="vlp_cloud/sync_r " />
+		<param name="top_points_topic_name" value="/vlp_t/velodyne_points" />
+		<param name="left_points_topic_name" value="/vlp_l/velodyne_points" />
+		<param name="right_points_topic_name" value="/vlp_r/velodyne_points" />
 
 		<param name="ttol_x" value="-0.0267" />
 		<param name="ttol_y" value="0.51822" />
 		<param name="ttol_z" value="-0.06038" />
-		<param name="ttol_roll" value="0.0" />
+		<param name="ttol_roll" value="-0.261" />
 		<param name="ttol_pitch" value="0.0" />
 		<param name="ttol_yaw" value="0.0" />
 
 		<param name="ttor_x" value="0.020068" />
 		<param name="ttor_y" value="-0.50077" />
 		<param name="ttor_z" value="-0.0682" />
-		<param name="ttor_roll" value="0.0" />
+		<param name="ttor_roll" value="0.261" />
 		<param name="ttor_pitch" value="0.0" />
 		<param name="ttor_yaw" value="0.0" />
 

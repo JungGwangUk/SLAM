@@ -22,14 +22,16 @@ static std::string _top_points_topic_name, _left_points_topic_name, _right_point
 
 static ros::Publisher points_pub;
 
-static double top_time, left_time, right_time;
+static bool top_time, left_time, right_time;
 void TPointCB(const sensor_msgs::PointCloud2ConstPtr& input)
 {
-    top_time = input->header.stamp.toSec();
     pcl::fromROSMsg(*input, *top_cloud);
 
-    if(top_time != left_time || top_time != right_time)
+    if(!left_time || !right_time)
         return;
+
+    left_time = false;
+    right_time = false;
 
     pcl::PointCloud<pcl::PointXYZI>::Ptr transformed_left_ptr(new pcl::PointCloud<pcl::PointXYZI>);
     pcl::PointCloud<pcl::PointXYZI>::Ptr transformed_right_ptr(new pcl::PointCloud<pcl::PointXYZI>);
@@ -47,46 +49,18 @@ void TPointCB(const sensor_msgs::PointCloud2ConstPtr& input)
 
 void LPointCB(const sensor_msgs::PointCloud2ConstPtr& input)
 {
-    left_time = input->header.stamp.toSec();
+    left_time = true;
+
     pcl::fromROSMsg(*input, *left_cloud);
 
-    if(top_time != left_time || top_time != right_time)
-        return;
-
-    pcl::PointCloud<pcl::PointXYZI>::Ptr transformed_left_ptr(new pcl::PointCloud<pcl::PointXYZI>);
-    pcl::PointCloud<pcl::PointXYZI>::Ptr transformed_right_ptr(new pcl::PointCloud<pcl::PointXYZI>);
-
-    pcl::transformPointCloud(*left_cloud, *transformed_left_ptr, _tf_ttol);
-    pcl::transformPointCloud(*right_cloud, *transformed_right_ptr, _tf_ttor);
-
-    *top_cloud += *transformed_left_ptr;
-    *top_cloud += *transformed_right_ptr;
-
-    sensor_msgs::PointCloud2 top_msg;
-    pcl::toROSMsg(*top_cloud, top_msg);
-    points_pub.publish(top_msg);
 }
 
 void RPointCB(const sensor_msgs::PointCloud2ConstPtr& input)
 {
-    right_time = input->header.stamp.toSec();
+    right_time = true;
+
     pcl::fromROSMsg(*input, *right_cloud);
 
-    if(top_time != left_time || top_time != right_time)
-        return;
-
-    pcl::PointCloud<pcl::PointXYZI>::Ptr transformed_left_ptr(new pcl::PointCloud<pcl::PointXYZI>);
-    pcl::PointCloud<pcl::PointXYZI>::Ptr transformed_right_ptr(new pcl::PointCloud<pcl::PointXYZI>);
-
-    pcl::transformPointCloud(*left_cloud, *transformed_left_ptr, _tf_ttol);
-    pcl::transformPointCloud(*right_cloud, *transformed_right_ptr, _tf_ttor);
-
-    *top_cloud += *transformed_left_ptr;
-    *top_cloud += *transformed_right_ptr;
-
-    sensor_msgs::PointCloud2 top_msg;
-    pcl::toROSMsg(*top_cloud, top_msg);
-    points_pub.publish(top_msg);
 }
 
 
@@ -114,7 +88,6 @@ int main(int argc, char** argv)
     pnh.param<std::string>("top_points_topic_name", _top_points_topic_name, "vlp_t/velodyne_points");
     pnh.param<std::string>("left_points_topic_name", _left_points_topic_name, "vlp_l/velodyne_points");
     pnh.param<std::string>("right_points_topic_name", _right_points_topic_name, "vlp_r/velodyne_points");
-
 
     ros::Subscriber top_points_sub = nh.subscribe(_top_points_topic_name, 1000, TPointCB);
     ros::Subscriber left_points_sub = nh.subscribe(_left_points_topic_name, 1000, LPointCB);

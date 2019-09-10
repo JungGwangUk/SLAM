@@ -83,10 +83,7 @@ find_package(catkin REQUIRED COMPONENTS
   ${PCL_OPENMP_PACKAGES}
 )
 
-catkin_package(
-        CATKIN_DEPENDS std_msgs velodyne_pointcloud ndt_tku ndt_cpu ${PCL_OPENMP_PACKAGES}
-        DEPENDS PCL
-)
+
 
 add_library(slam3dlib
         include/slam/VertexSE3WithData.h
@@ -134,14 +131,6 @@ if (NOT (PCL_VERSION VERSION_LESS "1.7.2"))
     set_target_properties(3d_slam_node PROPERTIES COMPILE_DEFINITIONS "USE_PCL_OPENMP")
     set_target_properties(heuristic_slam_node PROPERTIES COMPILE_DEFINITIONS "USE_PCL_OPENMP")
 endif (NOT (PCL_VERSION VERSION_LESS "1.7.2"))
-
-add_executable(combine_3lidar_node src/combine_3lidar.cpp)
-target_link_libraries(combine_3lidar_node ${catkin_LIBRARIES})
-add_dependencies(combine_3lidar_node ${catkin_EXPORTED_TARGETS})
-
-add_executable(combine_2lidar_node src/combine_2lidar.cpp)
-target_link_libraries(combine_2lidar_node ${catkin_LIBRARIES})
-add_dependencies(combine_2lidar_node ${catkin_EXPORTED_TARGETS})
 
 add_executable(test_node src/test.cpp)
 target_link_libraries(test_node ${catkin_LIBRARIES})
