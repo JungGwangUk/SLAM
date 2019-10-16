@@ -1,5 +1,5 @@
 <launch>	
-	<node name="combine_3lidar_node" pkg="slam" type="combine_3lidar_node" output="screen">
+	<node name="combine_3lidar_node" pkg="preprocessing" type="combine_3lidar_node" output="screen">
 		
 		<param name="top_points_topic_name" value="/vlp_t/velodyne_points" />
 		<param name="left_points_topic_name" value="/vlp_l/velodyne_points" />

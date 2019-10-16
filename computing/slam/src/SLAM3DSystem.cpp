@@ -13,7 +13,6 @@ SLAM3DSystem::SLAM3DSystem()
 }
 SLAM3DSystem::~SLAM3DSystem()
 {
-//    _optimizer.save("/home/pharos/test2_ws/src/computing/slam/data/g2o.g2o");
 }
 
 void SLAM3DSystem::createVertexSE3(const number_t *estimate, pcl::PointCloud<pcl::PointXYZI> data, g2o::VertexSE3WithData &v)

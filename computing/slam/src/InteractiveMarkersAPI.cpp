@@ -96,7 +96,7 @@ double IntMarkerAPI::rand( double min, double max )
 // %Tag(6DOF)%
 void IntMarkerAPI::make6DofMarker( const std::string name, bool fixed, unsigned int interaction_mode, const double *position, bool show_6dof, InteractiveMarker &int_marker )
 {
-    int_marker.header.frame_id = "map";
+    int_marker.header.frame_id = "hitlc_map";
     geometry_msgs::Pose pose;
     estTopose(position,pose);
     int_marker.pose = pose;
@@ -167,7 +167,7 @@ void IntMarkerAPI::make6DofMarker( const std::string name, bool fixed, unsigned 
 // %Tag(RandomDof)%
 void IntMarkerAPI::makeRandomDofMarker( const tf::Vector3& position, InteractiveMarker &int_marker )
 {
-    int_marker.header.frame_id = "map";
+    int_marker.header.frame_id = "hitlc_map";
     tf::pointTFToMsg(position, int_marker.pose.position);
     int_marker.scale = 1;
 
@@ -196,7 +196,7 @@ void IntMarkerAPI::makeRandomDofMarker( const tf::Vector3& position, Interactive
 // %Tag(ViewFacing)%
 void IntMarkerAPI::makeViewFacingMarker( const tf::Vector3& position, InteractiveMarker &int_marker )
 {
-    int_marker.header.frame_id = "map";
+    int_marker.header.frame_id = "hitlc_map";
     tf::pointTFToMsg(position, int_marker.pose.position);
     int_marker.scale = 1;
 
@@ -231,7 +231,7 @@ void IntMarkerAPI::makeViewFacingMarker( const tf::Vector3& position, Interactiv
 // %Tag(Quadrocopter)%
 void IntMarkerAPI::makeQuadrocopterMarker( const tf::Vector3& position, InteractiveMarker &int_marker )
 {
-    int_marker.header.frame_id = "map";
+    int_marker.header.frame_id = "hitlc_map";
     tf::pointTFToMsg(position, int_marker.pose.position);
     int_marker.scale = 1;
 
@@ -256,7 +256,7 @@ void IntMarkerAPI::makeQuadrocopterMarker( const tf::Vector3& position, Interact
 // %Tag(ChessPiece)%
 void IntMarkerAPI::makeChessPieceMarker( const tf::Vector3& position, InteractiveMarker &int_marker )
 {
-    int_marker.header.frame_id = "map";
+    int_marker.header.frame_id = "hitlc_map";
     tf::pointTFToMsg(position, int_marker.pose.position);
     int_marker.scale = 1;
 
@@ -282,7 +282,7 @@ void IntMarkerAPI::makeChessPieceMarker( const tf::Vector3& position, Interactiv
 // %Tag(PanTilt)%
 void IntMarkerAPI::makePanTiltMarker( const tf::Vector3& position, InteractiveMarker &int_marker )
 {
-    int_marker.header.frame_id = "map";
+    int_marker.header.frame_id = "hitlc_map";
     tf::pointTFToMsg(position, int_marker.pose.position);
     int_marker.scale = 1;
 
@@ -314,7 +314,7 @@ void IntMarkerAPI::makePanTiltMarker( const tf::Vector3& position, InteractiveMa
 // %Tag(Button)%
 void IntMarkerAPI::makeButtonLineMarker(const std::string name, const tf::Vector3 p1, const tf::Vector3 p2, InteractiveMarker &int_marker )
 {
-    int_marker.header.frame_id = "map";
+    int_marker.header.frame_id = "hitlc_map";
     int_marker.scale = 1;
 
     int_marker.name = name;
@@ -332,7 +332,7 @@ void IntMarkerAPI::makeButtonLineMarker(const std::string name, const tf::Vector
 }
 void IntMarkerAPI::makeButtonBoxMarker(const std::string name, const tf::Vector3& position, InteractiveMarker &int_marker )
 {
-    int_marker.header.frame_id = "map";
+    int_marker.header.frame_id = "hitlc_map";
     tf::pointTFToMsg(position, int_marker.pose.position);
     int_marker.scale = 5;
 

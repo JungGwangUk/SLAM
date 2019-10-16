@@ -64,7 +64,8 @@ else()
 endif()
 
 
-add_compile_options(-std=c++17)
+# add_compile_options(-std=c++17)
+add_compile_options(-std=c++11)
 
 find_package(catkin REQUIRED COMPONENTS
   nav_msgs
@@ -97,7 +98,10 @@ add_library(slam3dlib
         src/InteractiveMarkersAPI.cpp
         )
 
-
+catkin_package(
+        CATKIN_DEPENDS std_msgs velodyne_pointcloud ndt_tku ndt_cpu ${PCL_OPENMP_PACKAGES}
+        DEPENDS PCL
+)
 
 ###########
 ## Build ##
@@ -114,6 +118,13 @@ target_link_libraries(3d_slam_node
         slam3dlib)
 add_dependencies(3d_slam_node ${catkin_EXPORTED_TARGETS})
 
+add_executable(hitlc_slam_node src/hitlc_slam.cpp)
+target_link_libraries(hitlc_slam_node
+        ${catkin_LIBRARIES}
+        ${G2O_LIBRARIES}
+        slam3dlib)
+add_dependencies(hitlc_slam_node ${catkin_EXPORTED_TARGETS})
+
 add_executable(heuristic_slam_node src/heuristic_slam.cpp)
 target_link_libraries(heuristic_slam_node
         ${catkin_LIBRARIES}
@@ -121,14 +132,25 @@ target_link_libraries(heuristic_slam_node
         slam3dlib)
 add_dependencies(heuristic_slam_node ${catkin_EXPORTED_TARGETS})
 
+add_executable(hitlc_finder_node src/hitlc_finder.cpp)
+target_link_libraries(hitlc_finder_node
+        ${catkin_LIBRARIES}
+        ${G2O_LIBRARIES}
+        slam3dlib)
+add_dependencies(hitlc_finder_node ${catkin_EXPORTED_TARGETS})
 if (CUDA_FOUND)
     target_include_directories(3d_slam_node PUBLIC ${CUDA_INCLUDE_DIRS})
+    target_include_directories(hitlc_slam_node PUBLIC ${CUDA_INCLUDE_DIRS})
+    target_include_directories(hitlc_finder_node PUBLIC ${CUDA_INCLUDE_DIRS})
     target_include_directories(heuristic_slam_node PUBLIC ${CUDA_INCLUDE_DIRS})
 endif ()
+        message(WARNING "Find cuda Fail!!!"...)
 
 
 if (NOT (PCL_VERSION VERSION_LESS "1.7.2"))
     set_target_properties(3d_slam_node PROPERTIES COMPILE_DEFINITIONS "USE_PCL_OPENMP")
+    set_target_properties(hitlc_slam_node PROPERTIES COMPILE_DEFINITIONS "USE_PCL_OPENMP")
+    set_target_properties(hitlc_finder_node PROPERTIES COMPILE_DEFINITIONS "USE_PCL_OPENMP")
     set_target_properties(heuristic_slam_node PROPERTIES COMPILE_DEFINITIONS "USE_PCL_OPENMP")
 endif (NOT (PCL_VERSION VERSION_LESS "1.7.2"))
 
