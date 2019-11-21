@@ -62,15 +62,17 @@ static double _fitness_score;
 static double _tf_x, _tf_y, _tf_z, _tf_roll, _tf_pitch, _tf_yaw;
 static double _v_dot;
 
-static bool _initial_scan_loaded = false;
-static bool _has_converged = false;
-static bool _is_optimized = false;
-static bool _is_first_vertex = true;
 static bool _use_vehicle_statas = true;
 static bool _use_imu = true;
 static bool _use_ekf = false;
 static bool _use_gps_init = false;
 static bool _save_data = false;
+
+static bool _initial_scan_loaded = false;
+static bool _has_converged = false;
+static bool _is_optimized = false;
+static bool _is_first_vertex = true;
+static bool _init_imu = false;
 
 static std::string _points_topic_name;
 static std::string _vehicle_state_topic_name;

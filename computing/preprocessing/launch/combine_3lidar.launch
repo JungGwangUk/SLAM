@@ -19,5 +19,19 @@
 		<param name="ttor_pitch" value="0.0" />
 		<param name="ttor_yaw" value="0.0" />
 
+		<!-- <param name="ttol_x" value="0.0" />
+		<param name="ttol_y" value="0.0" />
+		<param name="ttol_z" value="0.0" />
+		<param name="ttol_roll" value="0.0" />
+		<param name="ttol_pitch" value="0.0" />
+		<param name="ttol_yaw" value="0.0" />
+
+		<param name="ttor_x" value="0.0" />
+		<param name="ttor_y" value="0.0" />
+		<param name="ttor_z" value="0.0" />
+		<param name="ttor_roll" value="0.0" />
+		<param name="ttor_pitch" value="0.0" />
+		<param name="ttor_yaw" value="0.0" /> -->
+
 	</node>
 </launch>

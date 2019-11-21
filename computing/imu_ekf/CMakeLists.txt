@@ -1,28 +1,62 @@
 cmake_minimum_required(VERSION 2.8.3)
-project(preprocessing)
+project(imu_ekf)
 
 ## Compile as C++11, supported in ROS Kinetic and newer
-# add_compile_options(-std=c++11)
+add_compile_options(-std=c++11)
 
 ## Find catkin macros and libraries
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
 ## is used, also find other catkin packages
 find_package(catkin REQUIRED COMPONENTS
-  pcl_conversions
-  pcl_ros
   roscpp
   sensor_msgs
   std_msgs
-  tf
-  velodyne_pointcloud
+  pharos_msgs
 )
 
 find_package(Eigen3 REQUIRED)
+if (NOT EIGEN3_FOUND)
+    # Fallback to cmake_modules
+    find_package(cmake_modules REQUIRED)
+    find_package(Eigen REQUIRED)
+    set(EIGEN3_INCLUDE_DIRS ${EIGEN_INCLUDE_DIRS})
+    set(EIGEN3_LIBRARIES ${EIGEN_LIBRARIES})  # Not strictly necessary as Eigen is head only
+    # Possibly map additional variables to the EIGEN3_ prefix.
+else ()
+    set(EIGEN3_INCLUDE_DIRS ${EIGEN3_INCLUDE_DIR})
+endif ()
+## System dependencies are found with CMake's conventions
+# find_package(Boost REQUIRED COMPONENTS system)
 
-IF (NOT (PCL_VERSION VERSION_LESS "1.7.2"))
-    SET(PCL_OPENMP_PACKAGES pcl_omp_registration)
-ENDIF (NOT (PCL_VERSION VERSION_LESS "1.7.2"))
 
+## Uncomment this if the package has a setup.py. This macro ensures
+## modules and global scripts declared therein get installed
+## See http://ros.org/doc/api/catkin/html/user_guide/setup_dot_py.html
+# catkin_python_setup()
+
+################################################
+## Declare ROS messages, services and actions ##
+################################################
+
+## To declare and build messages, services or actions from within this
+## package, follow these steps:
+## * Let MSG_DEP_SET be the set of packages whose message types you use in
+##   your messages/services/actions (e.g. std_msgs, actionlib_msgs, ...).
+## * In the file package.xml:
+##   * add a build_depend tag for "message_generation"
+##   * add a build_depend and a exec_depend tag for each package in MSG_DEP_SET
+##   * If MSG_DEP_SET isn't empty the following dependency has been pulled in
+##     but can be declared for certainty nonetheless:
+##     * add a exec_depend tag for "message_runtime"
+## * In this file (CMakeLists.txt):
+##   * add "message_generation" and every package in MSG_DEP_SET to
+##     find_package(catkin REQUIRED COMPONENTS ...)
+##   * add "message_runtime" and every package in MSG_DEP_SET to
+##     catkin_package(CATKIN_DEPENDS ...)
+##   * uncomment the add_*_files sections below as needed
+##     and list every .msg/.srv/.action file to be processed
+##   * uncomment the generate_messages entry below
+##   * add every package in MSG_DEP_SET to generate_messages(DEPENDENCIES ...)
 
 ## Generate messages in the 'msg' folder
 # add_message_files(
@@ -81,8 +115,10 @@ ENDIF (NOT (PCL_VERSION VERSION_LESS "1.7.2"))
 ## CATKIN_DEPENDS: catkin_packages dependent projects also need
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
-        CATKIN_DEPENDS std_msgs velodyne_pointcloud velodyne_msgs ${PCL_OPENMP_PACKAGES}
-        DEPENDS PCL
+  INCLUDE_DIRS include
+  LIBRARIES imu_ekf
+  CATKIN_DEPENDS roscpp sensor_msgs std_msgs
+  DEPENDS system_lib
 )
 
 ###########
@@ -93,12 +129,15 @@ catkin_package(
 ## Your package locations should be listed before other locations
 include_directories(
   include
+  ${EIGEN3_INCLUDE_DIRS}
   ${catkin_INCLUDE_DIRS}
 )
+message(STATUS "-- include directory ${catkin_INCLUDE_DIRS} ")
+
 
 ## Declare a C++ library
 # add_library(${PROJECT_NAME}
-#   src/${PROJECT_NAME}/preprocessing.cpp
+#   src/${PROJECT_NAME}/imu_ekf.cpp
 # )
 
 ## Add cmake target dependencies of the library
@@ -109,7 +148,7 @@ include_directories(
 ## Declare a C++ executable
 ## With catkin_make all packages are built within a single CMake context
 ## The recommended prefix ensures that target names across packages don't collide
-# add_executable(${PROJECT_NAME}_node src/preprocessing_node.cpp)
+add_executable(imu_ekf_node src/imu_ekf_node.cpp)
 
 ## Rename C++ executable without prefix
 ## The above recommended prefix causes long target names, the following renames the
@@ -119,24 +158,13 @@ include_directories(
 
 ## Add cmake target dependencies of the executable
 ## same as for the library above
-# add_dependencies(${PROJECT_NAME}_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+add_dependencies(imu_ekf_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 ## Specify libraries to link a library or executable target against
-# target_link_libraries(${PROJECT_NAME}_node
-#   ${catkin_LIBRARIES}
-# )
+target_link_libraries(imu_ekf_node
+   ${catkin_LIBRARIES}
+   )
 
-add_executable(combine_3lidar_node src/combine_3lidar.cpp)
-target_link_libraries(combine_3lidar_node ${catkin_LIBRARIES})
-add_dependencies(combine_3lidar_node ${catkin_EXPORTED_TARGETS})
-
-add_executable(combine_2lidar_node src/combine_2lidar.cpp)
-target_link_libraries(combine_2lidar_node ${catkin_LIBRARIES})
-add_dependencies(combine_2lidar_node ${catkin_EXPORTED_TARGETS})
-
-add_executable(imu_pose_node src/imu_pose_node.cpp)
-target_link_libraries(imu_pose_node ${catkin_LIBRARIES})
-add_dependencies(imu_pose_node ${catkin_EXPORTED_TARGETS})
 #############
 ## Install ##
 #############
@@ -177,7 +205,7 @@ add_dependencies(imu_pose_node ${catkin_EXPORTED_TARGETS})
 #############
 
 ## Add gtest based cpp test target and link libraries
-# catkin_add_gtest(${PROJECT_NAME}-test test/test_preprocessing.cpp)
+# catkin_add_gtest(${PROJECT_NAME}-test test/test_imu_ekf.cpp)
 # if(TARGET ${PROJECT_NAME}-test)
 #   target_link_libraries(${PROJECT_NAME}-test ${PROJECT_NAME})
 # endif()

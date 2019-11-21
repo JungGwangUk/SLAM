@@ -41,7 +41,7 @@ void PoseEKFSystem::EKF(Eigen::Vector3d &X, const Eigen::Vector3d u, const Eigen
 
 }
 
-void PoseEKFSystem::PredictFromModel(Eigen::Vector3d &X, Eigen::Vector3d u, float dt)
+void PoseEKFSystem::PredictFromModel(Eigen::Vector3d &X, Eigen::Vector3d u, double dt)
 {
     double v,theta,psi;
     v = u[0];

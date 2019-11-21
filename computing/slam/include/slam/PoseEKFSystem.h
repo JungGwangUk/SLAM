@@ -21,5 +21,5 @@ public:
 
     void EKF(Eigen::Vector3d &X, const Eigen::Vector3d u, const Eigen::Vector3d z, const float dt);
 
-    void PredictFromModel(Eigen::Vector3d &X, Eigen::Vector3d u, float dt);
+    void PredictFromModel(Eigen::Vector3d &X, Eigen::Vector3d u, double dt);
 };

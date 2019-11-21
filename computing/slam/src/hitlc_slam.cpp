@@ -6,7 +6,6 @@
 pcl::PointCloud<pcl::PointXYZI>::Ptr final_map_ptr(new pcl::PointCloud<pcl::PointXYZI>);
 
 SLAM3DSystem slam3d;
-EKFSystem ekf;
 PoseEKFSystem pose_ekf;
 gpu::GNormalDistributionsTransform gpu_ndt;
 
@@ -20,6 +19,8 @@ int hitlc_count = 0;
 
 
 ros::Publisher gt_pub;
+ros::Publisher imu_odom_pub;
+
 bool init_gt = false;
 bool first_novatel =true;
 FILE *fp;
@@ -47,13 +48,17 @@ void LidarCB(const sensor_msgs::PointCloud2ConstPtr &input)
                 tf::Quaternion q;
                 tf::quaternionMsgToTF(origin.pose.pose.orientation, q);
                 tf::Matrix3x3(q).getRPY(_previous_pose.roll, _previous_pose.pitch, _previous_pose.yaw);
-                ekf.X_ << _previous_pose.roll, _previous_pose.pitch, _previous_pose.yaw;
                 _pred_pose << _previous_pose.x, _previous_pose.y, _previous_pose.z;
                 pose_ekf.X_ = _pred_pose;
                 _curr_rpy << _previous_pose.roll, _previous_pose.pitch, _previous_pose.yaw;
                 init_gt = true;
             }
         }
+    }
+    if(!_use_imu)
+    {
+        ROS_WARN("Waiting for receiving IMU data");
+        return;
     }
 
     static double num_target_map_idx =  _target_map_lengh/_min_add_scan_shift;
@@ -125,15 +130,18 @@ void LidarCB(const sensor_msgs::PointCloud2ConstPtr &input)
 
         slam3d.EstimateToRPYpose(p, _previous_pose);
 
-        ekf.X_ << _previous_pose.roll, _previous_pose.pitch, _previous_pose.yaw;
         _pred_pose << _previous_pose.x, _previous_pose.y, _previous_pose.z;
         pose_ekf.X_= _pred_pose;
+
+        // reset target and final map point cloud
         _target_points.clear();
         final_map_ptr->clear();
+
         _lookup_LCdist = 0.0;
         _map_pub_id += 50;
 
-        slam3d.buildCloudMap(*final_map_ptr); // buildMap
+        // rebuild final map
+        slam3d.buildCloudMap(*final_map_ptr);
         cout << "rebuild final map" << endl;
 
         sensor_msgs::PointCloud2::Ptr map_msg_ptr(new sensor_msgs::PointCloud2);
@@ -141,6 +149,7 @@ void LidarCB(const sensor_msgs::PointCloud2ConstPtr &input)
         map_msg_ptr->header.frame_id = "map";
         _ndt_LC_map_publish.publish(*map_msg_ptr);
 
+        // rebuild target map
         pcl::PointCloud<pcl::PointXYZI> transformed_cloud;
         for(int i=slam3d.vertexMap.size()-num_target_map_idx; i<slam3d.vertexMap.size(); i++)
         {
@@ -205,7 +214,6 @@ void LidarCB(const sensor_msgs::PointCloud2ConstPtr &input)
 
     if(_use_ekf)
     {
-
         Vector3d z(localizer_pose.x, localizer_pose.y, localizer_pose.z);
         Vector3d u(_curr_states.state.velocity, _curr_rpy[1], _curr_rpy[2]);
 
@@ -217,13 +225,9 @@ void LidarCB(const sensor_msgs::PointCloud2ConstPtr &input)
         current_pose.y = _pred_pose[1];
         current_pose.z = _pred_pose[2];
 
+        current_pose.roll = _curr_rpy[0];
+        current_pose.pitch = _curr_rpy[1];
         current_pose.yaw = localizer_pose.yaw;
-
-        if(ekf.P_(0,0) < 0.1 && ekf.P_(1,1) < 0.1)
-        {
-            current_pose.roll = _curr_rpy[0];
-            current_pose.pitch = _curr_rpy[1];
-        }
     }
     else
         current_pose = localizer_pose;
@@ -273,10 +277,6 @@ void LidarCB(const sensor_msgs::PointCloud2ConstPtr &input)
     ekf_odom.pose.pose.orientation.y = q_t.y();
     ekf_odom.pose.pose.orientation.z = q_t.z();
     ekf_odom.pose.pose.orientation.w = q_t.w();
-
-    ekf_odom.pose.covariance[0] = ekf.P_(0,0);
-    ekf_odom.pose.covariance[8] = ekf.P_(1,1);
-    ekf_odom.pose.covariance[31] = ekf.P_(2,2);
 
     _ekf_odom_publish.publish(ekf_odom);
     //////////////////////////////////////////////////////////
@@ -485,39 +485,54 @@ void ImuCB(const sensor_msgs::ImuConstPtr &input)
 
     imu = *input;
 
+    // save data
     fprintf(imu_data, "%lf %lf %lf %lf %lf %lf %lf\n",input->header.stamp.toSec(), imu.angular_velocity.x, imu.angular_velocity.y, imu.angular_velocity.z, imu.linear_acceleration.x, imu.linear_acceleration.y, imu.linear_acceleration.z);
     fprintf(vehicle_data, "%lf %lf %lf %lf %lf %lf\n",_curr_states.header.stamp.toSec(), _curr_states.state.velocity,  _curr_states.state.lon_acc, _curr_states.state.lat_acc, _curr_states.state.yaw_rate, _curr_states.state.wheel_angle);
+    // ------------
+
+    // Quat to Euler
+    double a;
+    tf::Quaternion q;
+    tf::quaternionMsgToTF(imu.orientation, q);
+    tf::Matrix3x3(q).getRPY(_curr_rpy[0], _curr_rpy[1], a);
 
     if(is_first)
     {
         is_first = false;
         return;
     }
-    imu.angular_velocity.x = input->angular_velocity.x;
-    imu.angular_velocity.y = input->angular_velocity.y;
-    imu.angular_velocity.z = input->angular_velocity.z;
 
-    Vector3d u(prev_imu.angular_velocity.x, prev_imu.angular_velocity.y, prev_imu.angular_velocity.z);
-    Vector2d z;
-    double g = -9.81;
-    z[1] = asin((imu.linear_acceleration.x - _v_dot)/g);
-    if(isnan(z[1]))
-    {
-        z[1] = 0.0;
-        ROS_WARN("Calculation pitch is non!!! %f", _v_dot);
-    }
-    z[0] = asin((-imu.linear_acceleration.y + _curr_states.state.velocity*imu.angular_velocity.z)/(g*cos(z[1])));
-    if(isnan(z[0]))
-    {
-        z[0] = 0.0;
-        ROS_WARN("Calculation roll is non!!!");
-    }
+    double d_yaw, prev_roll, prev_pitch, prev_yaw, dt;
+    dt = (imu.header.stamp - prev_imu.header.stamp).toSec();
 
-    ekf.EKF(_curr_rpy, u, z, (imu.header.stamp - prev_imu.header.stamp).toSec());
+    tf::quaternionMsgToTF(prev_imu.orientation, q);
+    tf::Matrix3x3(q).getRPY(prev_roll, prev_pitch, prev_yaw);
 
-    Vector3d u2(_curr_states.state.velocity, _curr_rpy[1], _curr_rpy[2]);
-    pose_ekf.PredictFromModel(_pred_pose, u2, (imu.header.stamp - prev_imu.header.stamp).toSec());
+    // calculate global yaw
+    d_yaw = prev_imu.angular_velocity.y*sin(prev_roll)/cos(prev_pitch) + prev_imu.angular_velocity.z*cos(prev_roll)/cos(prev_pitch);
+    _curr_rpy[2] += d_yaw*dt;
+
+    // predict pose using imu data
+    Vector3d u(_curr_states.state.velocity, _curr_rpy[1], _curr_rpy[2]);
+    pose_ekf.PredictFromModel(_pred_pose, u, dt);
+
     prev_imu = imu;
+
+    // predict imu pose
+    static Vector3d imu_pose(_previous_pose.x, _previous_pose.y, _previous_pose.z);
+    Vector3d u2(_curr_states.state.velocity, _curr_rpy[1], _curr_rpy[2]);
+    pose_ekf.PredictFromModel(imu_pose, u2, dt);
+    nav_msgs::Odometry imu_odom;
+    imu_odom.header.stamp = input->header.stamp;
+    imu_odom.header.frame_id = "map";
+    imu_odom.pose.pose.position.x = imu_pose[0];
+    imu_odom.pose.pose.position.y = imu_pose[1];
+    imu_odom.pose.pose.position.z = imu_pose[2];
+
+    imu_odom_pub.publish(imu_odom);
+
+    if(!_init_imu)
+        _init_imu = true;
 }
 
 void LCInfoCB(const hitlc_msgs::LCInfoConstPtr &msg)
@@ -647,7 +662,6 @@ int main(int argc, char** argv)
     
     slam3d.initG2O(_g2o_solver); // Initializing G2O
 
-    ekf.Init();
     pose_ekf.Init();
 
     ros::Subscriber sub_points = nh.subscribe(_points_topic_name, 1000, LidarCB);
@@ -668,8 +682,9 @@ int main(int argc, char** argv)
     _ekf_odom_publish = nh.advertise<nav_msgs::Odometry>("/ekf_odom", 1000);
     _predict_odom_publish = nh.advertise<nav_msgs::Odometry>("/predict_odom", 1000);
     _ndt_odom_publish = nh.advertise<nav_msgs::Odometry>("/ndt_odom", 1000);
-    gt_pub = nh.advertise<nav_msgs::Odometry>("/ground_truth", 1000);
     _hitlc_msg_pub = nh.advertise<hitlc_msgs::InputTargetArray>("hitlc/hitlc_array", 1000);
+    gt_pub = nh.advertise<nav_msgs::Odometry>("/ground_truth", 1000);
+    imu_odom_pub = nh.advertise<nav_msgs::Odometry>("/imu_odom", 1000);
 
     fp = fopen((_save_path+"ground_truth.txt").c_str(), "w");
     vehicle_data = fopen((_save_path+"vehicle_data.txt").c_str(), "w");
