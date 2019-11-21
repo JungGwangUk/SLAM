@@ -32,7 +32,9 @@
 #include <velodyne_pointcloud/datacontainerbase.h>
 #include <pcl_ros/point_cloud.h>
 #include <velodyne_pointcloud/point_types.h>
+#include <velodyne_msgs/IMURPYpose.h>
 
+#include <tf/transform_broadcaster.h>
 
 namespace velodyne_rawdata
 {
@@ -148,11 +150,18 @@ namespace velodyne_rawdata
     int setupOffline(std::string calibration_file, double max_range_, double min_range_);
 
     void unpack(const velodyne_msgs::VelodynePacket &pkt, DataContainerBase& data);
-    
+    void unpack(const velodyne_msgs::VelodynePacket &pkt, DataContainerBase& data, Eigen::Matrix4d T);
+
+    Eigen::Matrix4d PoseToMatrix(velodyne_msgs::IMURPYpose pose);
+    Eigen::Matrix4d PoseToMatrix(std::vector<double> pose);
+    velodyne_msgs::IMURPYpose MatrixToRPYpose(const Eigen::Matrix4d matrix);
+
     void setParameters(double min_range, double max_range, double view_direction,
                        double view_width);
 
     int scansPerPacket() const;
+
+    Eigen::Matrix4d Tml; /// Transformation matrix IMU to LiDAR
 
   private:
 
@@ -163,7 +172,11 @@ namespace velodyne_rawdata
       double min_range;                ///< minimum range to publish
       int min_angle;                   ///< minimum angle to publish
       int max_angle;                   ///< maximum angle to publish
-      
+
+      bool distance_threshold;         ///< set distance threshold to publish
+
+      std::vector<double> tf;             ///< transformation matrix info base to lidar
+
       double tmp_min_angle;
       double tmp_max_angle;
     } Config;
@@ -176,8 +189,9 @@ namespace velodyne_rawdata
     float sin_rot_table_[ROTATION_MAX_UNITS];
     float cos_rot_table_[ROTATION_MAX_UNITS];
     
-    /** add private function to handle the VLP16 **/ 
+    /** add private function to handle the VLP16 **/
     void unpack_vlp16(const velodyne_msgs::VelodynePacket &pkt, DataContainerBase& data);
+    void unpack_vlp16(const velodyne_msgs::VelodynePacket &pkt, DataContainerBase& data, Eigen::Matrix4d T);
 
     /** in-line test whether a point is in range */
     bool pointInRange(float range)

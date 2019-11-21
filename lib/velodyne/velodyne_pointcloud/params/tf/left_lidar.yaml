@@ -1,0 +1,8 @@
+# Transformation matrix info base(IMU) to LiDAR(left)
+tf:
+  - 1.43    # dx
+  - 0.5     # dy
+  - 1.1     # dz
+  - -0.261  # droll
+  - 0.0     # dpitch
+  - 0.0     # dyaw

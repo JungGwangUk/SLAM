@@ -25,13 +25,13 @@
 
 #include <dynamic_reconfigure/server.h>
 #include <velodyne_pointcloud/CloudNodeConfig.h>
+#include <velodyne_msgs/VelodynePacket.h>
 
 namespace velodyne_pointcloud
 {
   class Convert
   {
   public:
-
     Convert(ros::NodeHandle node, ros::NodeHandle private_nh);
     ~Convert() {}
 
@@ -40,14 +40,21 @@ namespace velodyne_pointcloud
     void callback(velodyne_pointcloud::CloudNodeConfig &config,
                 uint32_t level);
     void processScan(const velodyne_msgs::VelodyneScan::ConstPtr &scanMsg);
-
+    void poseCB(const velodyne_msgs::IMURPYposeConstPtr &imu);
     ///Pointer to dynamic reconfigure service srv_
     boost::shared_ptr<dynamic_reconfigure::Server<velodyne_pointcloud::
       CloudNodeConfig> > srv_;
     
     boost::shared_ptr<velodyne_rawdata::RawData> data_;
     ros::Subscriber velodyne_scan_;
+    ros::Subscriber imu_data_;
     ros::Publisher output_;
+
+    std::vector<velodyne_msgs::IMURPYpose> pose_array_;
+
+    bool init_imu_ = false;
+    bool lidar_compensate_ = false;     ///< set to using lidar compensater with imu
+
 
     /// configuration parameters
     typedef struct {

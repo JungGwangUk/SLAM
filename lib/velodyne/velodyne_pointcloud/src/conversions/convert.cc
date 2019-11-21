@@ -13,9 +13,10 @@
 
 */
 
+#include <velodyne_pointcloud/rawdata.h>
 #include "velodyne_pointcloud/convert.h"
 
-#include <pcl_conversions/pcl_conversions.h>
+
 
 namespace velodyne_pointcloud
 {
@@ -42,6 +43,18 @@ namespace velodyne_pointcloud
       node.subscribe("velodyne_packets", 10,
                      &Convert::processScan, (Convert *) this,
                      ros::TransportHints().tcpNoDelay(true));
+
+    ros::NodeHandle nh;
+    imu_data_ =
+      node.subscribe("/imu_pose", 10,
+                     &Convert::poseCB, (Convert *) this,
+                     ros::TransportHints().tcpNoDelay(true));
+
+    if (!private_nh.getParam("lidar_compensate", lidar_compensate_))
+    {
+      ROS_ERROR_STREAM("No lidar compensator usage status.  Using false values!");
+      lidar_compensate_ = false;
+    }
   }
   
   void Convert::callback(velodyne_pointcloud::CloudNodeConfig &config,
@@ -58,6 +71,12 @@ namespace velodyne_pointcloud
     if (output_.getNumSubscribers() == 0)         // no one listening?
       return;                                     // avoid much work
 
+    if(!init_imu_)
+    {
+      init_imu_ = true;
+      return;
+    }
+
     // allocate a point cloud with same time and frame ID as raw data
     PointcloudXYZIR outMsg;
     // outMsg's header is a pcl::PCLHeader, convert it before stamp assignment
@@ -68,15 +87,48 @@ namespace velodyne_pointcloud
     outMsg.pc->points.reserve(scanMsg->packets.size() * data_->scansPerPacket());
 
     // process each packet provided by the driver
-    for (size_t i = 0; i < scanMsg->packets.size(); ++i)
+    if(lidar_compensate_)
     {
-      data_->unpack(scanMsg->packets[i], outMsg);
+      Eigen::Matrix4d T,T1,T2,Tml,Tlm;
+
+      Tml = data_->Tml;
+      Tlm = data_->Tml.inverse();
+      T2 = data_->PoseToMatrix(pose_array_[pose_array_.size()-1]);
+
+      for (size_t i = 0; i < scanMsg->packets.size(); ++i)
+      {
+        velodyne_msgs::IMURPYpose pose;
+
+        int c = float(scanMsg->packets.size()/(pose_array_.size()-1));
+        if(i%c == 0)
+        {
+          int m = float(i/c);
+          T1 = data_->PoseToMatrix(pose_array_[m]);
+          T = T2.inverse()*T1*Tml;
+        }
+
+        data_->unpack(scanMsg->packets[i], outMsg, T);
+      }
     }
+    else
+    {
+      for(size_t i = 0; i < scanMsg->packets.size(); ++i)
+      {
+        data_->unpack(scanMsg->packets[i], outMsg);
+      }
+    }
+
 
     // publish the accumulated cloud message
     ROS_DEBUG_STREAM("Publishing " << outMsg.pc->height * outMsg.pc->width
                      << " Velodyne points, time: " << outMsg.pc->header.stamp);
     output_.publish(outMsg.pc);
+
+    pose_array_.clear();
   }
 
+  void Convert::poseCB(const velodyne_msgs::IMURPYposeConstPtr &pose)
+  {
+    pose_array_.push_back(*pose);
+  }
 } // namespace velodyne_pointcloud
