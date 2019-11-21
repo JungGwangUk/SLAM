@@ -1,0 +1,13 @@
+<launch>
+	<arg name="l_tf" default="$(find velodyne_pointcloud)/params/tf/left_lidar.yaml"/>
+	<arg name="r_tf" default="$(find velodyne_pointcloud)/params/tf/right_lidar.yaml"/>
+	<arg name="t_tf" default="$(find velodyne_pointcloud)/params/tf/top_lidar.yaml"/>
+
+	<node pkg="slam" type="lidar_odometry_node" name="lidar_odometry_node" output="screen">
+    
+        <rosparam param="left" command="load" file="$(arg l_tf)" /> 
+        <rosparam param="right" command="load" file="$(arg r_tf)" /> 
+        <rosparam param="top" command="load" file="$(arg t_tf)" /> 
+
+  	</node>    
+</launch>
