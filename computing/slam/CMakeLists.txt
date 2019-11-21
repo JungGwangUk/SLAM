@@ -154,10 +154,7 @@ if (NOT (PCL_VERSION VERSION_LESS "1.7.2"))
     set_target_properties(heuristic_slam_node PROPERTIES COMPILE_DEFINITIONS "USE_PCL_OPENMP")
 endif (NOT (PCL_VERSION VERSION_LESS "1.7.2"))
 
-add_executable(test_node src/test.cpp)
-target_link_libraries(test_node ${catkin_LIBRARIES})
-add_dependencies(test_node ${catkin_EXPORTED_TARGETS})
+add_executable(lidar_odometry_node src/lidar_odometry_node.cpp)
+target_link_libraries(lidar_odometry_node ${catkin_LIBRARIES})
+add_dependencies(lidar_odometry_node ${catkin_EXPORTED_TARGETS})
 
-add_executable(test2_node src/test2.cpp)
-target_link_libraries(test2_node ${catkin_LIBRARIES})
-add_dependencies(test2_node ${catkin_EXPORTED_TARGETS})

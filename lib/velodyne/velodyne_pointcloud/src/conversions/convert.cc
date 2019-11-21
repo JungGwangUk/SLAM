@@ -104,7 +104,7 @@ namespace velodyne_pointcloud
         {
           int m = float(i/c);
           T1 = data_->PoseToMatrix(pose_array_[m]);
-          T = T2.inverse()*T1*Tml;
+          T = Tlm*T2.inverse()*T1*Tml;
         }
 
         data_->unpack(scanMsg->packets[i], outMsg, T);
