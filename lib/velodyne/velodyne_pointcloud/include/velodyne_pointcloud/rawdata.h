@@ -150,7 +150,7 @@ namespace velodyne_rawdata
     int setupOffline(std::string calibration_file, double max_range_, double min_range_);
 
     void unpack(const velodyne_msgs::VelodynePacket &pkt, DataContainerBase& data);
-    void unpack(const velodyne_msgs::VelodynePacket &pkt, DataContainerBase& data, Eigen::Matrix4d T);
+    void unpack(const velodyne_msgs::VelodynePacket &pkt, DataContainerBase& data, Eigen::Matrix4d T, velodyne_msgs::IMURPYpose d_pose, size_t packet_size, size_t index);
 
     Eigen::Matrix4d PoseToMatrix(velodyne_msgs::IMURPYpose pose);
     Eigen::Matrix4d PoseToMatrix(std::vector<double> pose);
@@ -191,7 +191,7 @@ namespace velodyne_rawdata
     
     /** add private function to handle the VLP16 **/
     void unpack_vlp16(const velodyne_msgs::VelodynePacket &pkt, DataContainerBase& data);
-    void unpack_vlp16(const velodyne_msgs::VelodynePacket &pkt, DataContainerBase& data, Eigen::Matrix4d T);
+    void unpack_vlp16(const velodyne_msgs::VelodynePacket &pkt, DataContainerBase& data, Eigen::Matrix4d T, velodyne_msgs::IMURPYpose d_pose, size_t packet_size, size_t index);
 
     /** in-line test whether a point is in range */
     bool pointInRange(float range)

@@ -26,6 +26,11 @@ namespace velodyne_pointcloud
   {
     data_->setup(private_nh);
 
+    if (!private_nh.getParam("lidar_compensate", lidar_compensate_))
+    {
+      ROS_ERROR_STREAM("No lidar compensator usage status.  Using false values!");
+      lidar_compensate_ = false;
+    }
 
     // advertise output point cloud (before subscribing to input data)
     output_ =
@@ -40,21 +45,14 @@ namespace velodyne_pointcloud
 
     // subscribe to VelodyneScan packets
     velodyne_scan_ =
-      node.subscribe("velodyne_packets", 10,
+      node.subscribe("velodyne_packets", 100,
                      &Convert::processScan, (Convert *) this,
                      ros::TransportHints().tcpNoDelay(true));
 
-    ros::NodeHandle nh;
     imu_data_ =
-      node.subscribe("/imu_pose", 10,
+      node.subscribe("/imu_pose", 100,
                      &Convert::poseCB, (Convert *) this,
                      ros::TransportHints().tcpNoDelay(true));
-
-    if (!private_nh.getParam("lidar_compensate", lidar_compensate_))
-    {
-      ROS_ERROR_STREAM("No lidar compensator usage status.  Using false values!");
-      lidar_compensate_ = false;
-    }
   }
   
   void Convert::callback(velodyne_pointcloud::CloudNodeConfig &config,
@@ -81,7 +79,6 @@ namespace velodyne_pointcloud
     PointcloudXYZIR outMsg;
     // outMsg's header is a pcl::PCLHeader, convert it before stamp assignment
     outMsg.pc->header.stamp = pcl_conversions::toPCL(scanMsg->header).stamp;
-    outMsg.pc->header.frame_id = scanMsg->header.frame_id;
     outMsg.pc->height = 1;
 
     outMsg.pc->points.reserve(scanMsg->packets.size() * data_->scansPerPacket());
@@ -89,29 +86,59 @@ namespace velodyne_pointcloud
     // process each packet provided by the driver
     if(lidar_compensate_)
     {
-      Eigen::Matrix4d T,T1,T2,Tml,Tlm;
+      outMsg.pc->header.frame_id = "imu";   ///> imu coordinates
+      Eigen::Matrix4d T,T1,T2,Tml;
 
       Tml = data_->Tml;
-      Tlm = data_->Tml.inverse();
       T2 = data_->PoseToMatrix(pose_array_[pose_array_.size()-1]);
+
+      velodyne_msgs::IMURPYpose d_pose;
 
       for (size_t i = 0; i < scanMsg->packets.size(); ++i)
       {
-        velodyne_msgs::IMURPYpose pose;
-
         int c = float(scanMsg->packets.size()/(pose_array_.size()-1));
         if(i%c == 0)
         {
           int m = float(i/c);
+//          velodyne_msgs::IMURPYpose pose;
+//          pose.x = (pose_array_[m].x-pose_array_[pose_array_.size()-1].x)*1.0;
+//          pose.y = (pose_array_[m].y-pose_array_[pose_array_.size()-1].y)*1.0;
+//          pose.z = (pose_array_[m].z-pose_array_[pose_array_.size()-1].z)*1.0;
+//          pose.roll = (pose_array_[m].roll-pose_array_[pose_array_.size()-1].roll)*1.0;
+//          pose.pitch = (pose_array_[m].pitch-pose_array_[pose_array_.size()-1].pitch)*1.0;
+//          pose.yaw = (pose_array_[m].yaw-pose_array_[pose_array_.size()-1].yaw)*1.0;
+//          T = data_->PoseToMatrix(pose);
+
           T1 = data_->PoseToMatrix(pose_array_[m]);
-          T = Tlm*T2.inverse()*T1*Tml;
+          T = T2.inverse()*T1;
+          if((m+1)<pose_array_.size())
+          {
+            d_pose.x = pose_array_[m+1].x-pose_array_[m].x;
+            d_pose.y = pose_array_[m+1].y-pose_array_[m].y;
+            d_pose.z = pose_array_[m+1].z-pose_array_[m].z;
+            d_pose.roll = pose_array_[m+1].roll-pose_array_[m].roll;
+            d_pose.pitch = pose_array_[m+1].pitch-pose_array_[m].pitch;
+            d_pose.yaw = pose_array_[m+1].yaw-pose_array_[m].yaw;
+
+          }
+          else
+          {
+            d_pose.x = 0.0;
+            d_pose.y = 0.0;
+            d_pose.z = 0.0;
+            d_pose.roll = 0.0;
+            d_pose.pitch = 0.0;
+            d_pose.yaw = 0.0;
+          }
+
         }
 
-        data_->unpack(scanMsg->packets[i], outMsg, T);
+        data_->unpack(scanMsg->packets[i], outMsg, T, d_pose, c, i%c);
       }
     }
     else
     {
+      outMsg.pc->header.frame_id = scanMsg->header.frame_id;
       for(size_t i = 0; i < scanMsg->packets.size(); ++i)
       {
         data_->unpack(scanMsg->packets[i], outMsg);
@@ -123,7 +150,6 @@ namespace velodyne_pointcloud
     ROS_DEBUG_STREAM("Publishing " << outMsg.pc->height * outMsg.pc->width
                      << " Velodyne points, time: " << outMsg.pc->header.stamp);
     output_.publish(outMsg.pc);
-
     pose_array_.clear();
   }
 

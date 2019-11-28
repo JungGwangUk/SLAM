@@ -50,13 +50,26 @@ inline float SQR(float val) { return val*val; }
   {
     Eigen::Matrix4d matrix;
 
-    Eigen::AngleAxisd rotation_x(pose.roll, Eigen::Vector3d::UnitX());
-    Eigen::AngleAxisd rotation_y(pose.pitch, Eigen::Vector3d::UnitY());
-    Eigen::AngleAxisd rotation_z(pose.yaw, Eigen::Vector3d::UnitZ());
+    matrix(0,0) = cos(pose.yaw)*cos(pose.pitch);
+    matrix(0,1) = cos(pose.yaw)*sin(pose.pitch)*sin(pose.roll)-sin(pose.yaw)*cos(pose.roll);
+    matrix(0,2) = cos(pose.yaw)*sin(pose.pitch)*cos(pose.roll)+sin(pose.yaw)*sin(pose.roll);
 
-    Eigen::Translation3d translation(pose.x, pose.y, pose.z);
+    matrix(1,0) = sin(pose.yaw)*cos(pose.pitch);
+    matrix(1,1) = sin(pose.yaw)*sin(pose.pitch)*sin(pose.roll)+cos(pose.yaw)*cos(pose.roll);
+    matrix(1,2) = sin(pose.yaw)*sin(pose.pitch)*cos(pose.roll)-cos(pose.yaw)*sin(pose.roll);
 
-    matrix = (translation * rotation_z * rotation_y * rotation_x).matrix();
+    matrix(2,0) = -sin(pose.pitch);
+    matrix(2,1) = cos(pose.pitch)*sin(pose.roll);
+    matrix(2,2) = cos(pose.pitch)*cos(pose.roll);
+
+    matrix(0,3) = pose.x;
+    matrix(1,3) = pose.y;
+    matrix(2,3) = pose.z;
+
+    matrix(3,0) = 0.0;
+    matrix(3,1) = 0.0;
+    matrix(3,2) = 0.0;
+    matrix(3,3) = 1.0;
 
     return matrix;
   }
@@ -65,13 +78,26 @@ inline float SQR(float val) { return val*val; }
   {
     Eigen::Matrix4d matrix;
 
-    Eigen::AngleAxisd rotation_x(pose[3], Eigen::Vector3d::UnitX());
-    Eigen::AngleAxisd rotation_y(pose[4], Eigen::Vector3d::UnitY());
-    Eigen::AngleAxisd rotation_z(pose[5], Eigen::Vector3d::UnitZ());
+    matrix(0,0) = cos(pose[5])*cos(pose[4]);
+    matrix(0,1) = cos(pose[5])*sin(pose[4])*sin(pose[3])-sin(pose[5])*cos(pose[3]);
+    matrix(0,2) = cos(pose[5])*sin(pose[4])*cos(pose[3])+sin(pose[5])*sin(pose[3]);
 
-    Eigen::Translation3d translation(pose[0], pose[1], pose[2]);
+    matrix(1,0) = sin(pose[5])*cos(pose[4]);
+    matrix(1,1) = sin(pose[5])*sin(pose[4])*sin(pose[3])+cos(pose[5])*cos(pose[3]);
+    matrix(1,2) = sin(pose[5])*sin(pose[4])*cos(pose[3])-cos(pose[5])*sin(pose[3]);
 
-    matrix = (translation * rotation_z * rotation_y * rotation_x).matrix();
+    matrix(2,0) = -sin(pose[4]);
+    matrix(2,1) = cos(pose[4])*sin(pose[3]);
+    matrix(2,2) = cos(pose[4])*cos(pose[3]);
+
+    matrix(0,3) = pose[0];
+    matrix(1,3) = pose[1];
+    matrix(2,3) = pose[2];
+
+    matrix(3,0) = 0.0;
+    matrix(3,1) = 0.0;
+    matrix(3,2) = 0.0;
+    matrix(3,3) = 1.0;
 
     return matrix;
   }
@@ -382,7 +408,7 @@ inline float SQR(float val) { return val*val; }
     }
   }
 
-  void RawData::unpack(const velodyne_msgs::VelodynePacket &pkt, DataContainerBase& data, Eigen::Matrix4d T) /// unpack with inter-frame distortion compensate
+  void RawData::unpack(const velodyne_msgs::VelodynePacket &pkt, DataContainerBase& data, Eigen::Matrix4d T, velodyne_msgs::IMURPYpose d_pose, size_t packet_size, size_t index) /// unpack with inter-frame distortion compensate
   {
     using velodyne_pointcloud::LaserCorrection;
     ROS_DEBUG_STREAM("Received packet, time: " << pkt.stamp);
@@ -390,7 +416,7 @@ inline float SQR(float val) { return val*val; }
     /** special parsing for the VLP16 **/
     if (calibration_.num_lasers == 16)
     {
-      unpack_vlp16(pkt, data, T);
+      unpack_vlp16(pkt, data, T, d_pose, packet_size, index);
       return;
     }
 
@@ -726,7 +752,7 @@ inline float SQR(float val) { return val*val; }
     }
   }
 
-  void RawData::unpack_vlp16(const velodyne_msgs::VelodynePacket &pkt, DataContainerBase& data, Eigen::Matrix4d T)  /// unpack with inter-frame distortion compensate
+  void RawData::unpack_vlp16(const velodyne_msgs::VelodynePacket &pkt, DataContainerBase& data, Eigen::Matrix4d T, velodyne_msgs::IMURPYpose d_pose, size_t packet_size, size_t index)  /// unpack with inter-frame distortion compensate
   {
     float azimuth;
     float azimuth_diff;
@@ -736,6 +762,7 @@ inline float SQR(float val) { return val*val; }
     int azimuth_corrected;
     float x, y, z;
     float intensity;
+    Eigen::Matrix4d T_fianl;
 
     const raw_packet_t *raw = (const raw_packet_t *) &pkt.data[0];
 
@@ -775,7 +802,25 @@ inline float SQR(float val) { return val*val; }
         azimuth_diff = last_azimuth_diff;
       }
 
+      int N = packet_size*BLOCKS_PER_PACKET*VLP16_FIRINGS_PER_BLOCK;
+
       for (int firing=0, k=0; firing < VLP16_FIRINGS_PER_BLOCK; firing++){
+
+        int i = BLOCKS_PER_PACKET*VLP16_FIRINGS_PER_BLOCK*(index)+VLP16_FIRINGS_PER_BLOCK*block+firing;
+        float ratio = i%N/float(N);
+
+        velodyne_msgs::IMURPYpose del_pose;
+        del_pose.x = d_pose.x*ratio;
+        del_pose.y = d_pose.y*ratio;
+        del_pose.z = d_pose.z*ratio;
+        del_pose.roll = d_pose.roll*ratio;
+        del_pose.pitch = d_pose.pitch*ratio;
+        del_pose.yaw = d_pose.yaw*ratio;
+
+        Eigen::Matrix4d d_T = PoseToMatrix(del_pose);
+//        std::cerr << del_pose.x << " " << d_pose.x << " " << ratio<< std::endl;
+        T_fianl = T*d_T*Tml;
+
         for (int dsr=0; dsr < VLP16_SCANS_PER_FIRING; dsr++, k+=RAW_SCAN_SIZE){
           velodyne_pointcloud::LaserCorrection &corrections = calibration_.laser_corrections[dsr];
 
@@ -880,7 +925,7 @@ inline float SQR(float val) { return val*val; }
              * model we used.
              */
             z = distance_y * sin_vert_angle + vert_offset*cos_vert_angle;
-  
+
     
             /** Use standard ROS coordinate system (right-hand rule) */
             float x_coord = y;
@@ -900,9 +945,10 @@ inline float SQR(float val) { return val*val; }
             intensity = (intensity < min_intensity) ? min_intensity : intensity;
             intensity = (intensity > max_intensity) ? max_intensity : intensity;
 
+
             Eigen::Vector4d p(x_coord,y_coord,z_coord,1.0);
             Eigen::Vector4d p_hat;
-            p_hat = T*p;
+            p_hat = T_fianl*p;
 
             data.addPoint(p_hat.x(), p_hat.y(), p_hat.z(), corrections.laser_ring, azimuth_corrected, distance, intensity);
           }

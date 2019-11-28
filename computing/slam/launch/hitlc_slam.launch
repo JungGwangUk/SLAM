@@ -5,7 +5,7 @@
 		
 		<param name="g2o_solver" value="gn_var" />
 
-		<param name="points_topic_name" value="/velodyne_points" />
+		<param name="points_topic_name" value="/transformed_APoints" />
 		<param name="vehicle_state_topic_name" value="/vehicle/state2016" />
 		<param name="gps_state_topic_name" value="/odom/novatel" />
 		<param name="imu_topic_name" value="/ekf_imu" />
@@ -13,7 +13,7 @@
 		<param name="use_vehicle_statas" value="true" />
 		<param name="use_imu" value="true" />		
 		<param name="use_ekf" value="true" />
-		<param name="use_gps_init" value="true" />
+		<param name="use_gps_init" value="false" />
 		<param name="save_data" value="false" />
 
 		<param name="min_scan_range" value="5.0" />

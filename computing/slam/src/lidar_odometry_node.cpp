@@ -9,9 +9,15 @@ void LPointsCB(const sensor_msgs::PointCloud2ConstPtr points)
   pcl::fromROSMsg(*points, *cloud_ptr);
 
   Eigen::Matrix4d T;
-  T = rawData_.PoseToMatrix(curr_pose_)*Tml_;
+
+  if(!(points->header.frame_id == "imu"))
+    T = rawData_.PoseToMatrix(curr_pose_)*Tml_;
+  else
+    T = rawData_.PoseToMatrix(curr_pose_);
 
   pcl::transformPointCloud(*cloud_ptr, *transformed_cloud_ptr, T);
+
+  *assemble_cloud_ptr_ += *transformed_cloud_ptr;
 
   pcl::toROSMsg(*transformed_cloud_ptr, points_msg);
 
@@ -29,9 +35,15 @@ void RPointsCB(const sensor_msgs::PointCloud2ConstPtr points)
   pcl::fromROSMsg(*points, *cloud_ptr);
 
   Eigen::Matrix4d T;
-  T = rawData_.PoseToMatrix(curr_pose_)*Tmr_;
+
+  if(!(points->header.frame_id == "imu"))
+    T = rawData_.PoseToMatrix(curr_pose_)*Tmr_;
+  else
+    T = rawData_.PoseToMatrix(curr_pose_);
 
   pcl::transformPointCloud(*cloud_ptr, *transformed_cloud_ptr, T);
+
+  *assemble_cloud_ptr_ += *transformed_cloud_ptr;
 
   pcl::toROSMsg(*transformed_cloud_ptr, points_msg);
 
@@ -44,25 +56,54 @@ void TPointsCB(const sensor_msgs::PointCloud2ConstPtr points)
 {
   pcl::PointCloud<pcl::PointXYZI>::Ptr cloud_ptr(new pcl::PointCloud<pcl::PointXYZI>);
   pcl::PointCloud<pcl::PointXYZI>::Ptr transformed_cloud_ptr(new pcl::PointCloud<pcl::PointXYZI>);
+  pcl::PointCloud<pcl::PointXYZI>::Ptr transformed_assemble_cloud_ptr(new pcl::PointCloud<pcl::PointXYZI>);
+
   sensor_msgs::PointCloud2 points_msg;
+  sensor_msgs::PointCloud2 assemble_points_msg;
 
   pcl::fromROSMsg(*points, *cloud_ptr);
 
   Eigen::Matrix4d T;
-  T = rawData_.PoseToMatrix(curr_pose_)*Tmt_;
+
+  if(!(points->header.frame_id == "imu"))
+    T = rawData_.PoseToMatrix(curr_pose_)*Tmt_;
+  else
+    T = rawData_.PoseToMatrix(curr_pose_);
 
   pcl::transformPointCloud(*cloud_ptr, *transformed_cloud_ptr, T);
 
+  *assemble_cloud_ptr_ += *transformed_cloud_ptr;
+
+  Eigen::Matrix4d T_inv = T.inverse();
+  pcl::transformPointCloud(*assemble_cloud_ptr_, *transformed_assemble_cloud_ptr, T_inv);
+
   pcl::toROSMsg(*transformed_cloud_ptr, points_msg);
+  pcl::toROSMsg(*transformed_assemble_cloud_ptr, assemble_points_msg);
 
   points_msg.header.frame_id = "odom";
+  assemble_points_msg.header.frame_id = "imu";
 
   T_points_pub_.publish(points_msg);
+
+  if(dist_>accumulation_dist_)
+  {
+    A_points_pub_.publish(assemble_points_msg);
+    assemble_cloud_ptr_->clear();
+    dist_ = 0.0;
+  }
+
 }
 
 void ImuPoseCB(const velodyne_msgs::IMURPYposeConstPtr pose)
 {
   curr_pose_ = *pose;
+  double dx = curr_pose_.x - prev_pose_.x;
+  double dy = curr_pose_.y - prev_pose_.y;
+  double dz = curr_pose_.z - prev_pose_.z;
+
+  dist_ += sqrt(pow(dx,2)+pow(dy,2)+pow(dz,2));
+
+  prev_pose_ = curr_pose_;
 }
 
 void Init(ros::NodeHandle pnh)
@@ -90,8 +131,6 @@ void Init(ros::NodeHandle pnh)
     t_tf_vector.resize(6,0.0);
   }
   Tmt_ = rawData_.PoseToMatrix(t_tf_vector);
-
-
 }
 
 int main(int argc, char **argv)
@@ -110,6 +149,7 @@ int main(int argc, char **argv)
   L_points_pub_ = nh.advertise<sensor_msgs::PointCloud2>("transformed_LPoints", 10);
   R_points_pub_ = nh.advertise<sensor_msgs::PointCloud2>("transformed_RPoints", 10);
   T_points_pub_ = nh.advertise<sensor_msgs::PointCloud2>("transformed_TPoints", 10);
+  A_points_pub_ = nh.advertise<sensor_msgs::PointCloud2>("transformed_APoints", 10);
 
   Init(pnh);
 
