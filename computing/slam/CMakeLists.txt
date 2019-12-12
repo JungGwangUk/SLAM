@@ -78,8 +78,6 @@ find_package(catkin REQUIRED COMPONENTS
   std_msgs
   tf
   velodyne_pointcloud
-  ndt_tku
-  ndt_cpu
   interactive_markers
   ${PCL_OPENMP_PACKAGES}
 )

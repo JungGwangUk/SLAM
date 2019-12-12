@@ -13,20 +13,20 @@
 		<param name="use_vehicle_statas" value="true" />
 		<param name="use_imu" value="true" />		
 		<param name="use_ekf" value="true" />
-		<param name="use_gps_init" value="false" />
+		<param name="use_gps_init" value="true" />
 		<param name="save_data" value="false" />
 
 		<param name="min_scan_range" value="5.0" />
-		<param name="max_scan_range" value="200.0" />
+		<param name="max_scan_range" value="100.0" />
 		
-		<param name="ndt_res" value="1.0" />
-		<param name="max_iter" value="200" />
+		<param name="ndt_res" value="3.0" />
+		<param name="max_iter" value="10" />
 		<param name="step_size" value="0.1" />
 		<param name="trans_eps" value="0.01" />
 		<param name="voxel_leaf_size" value="0.5" />
 
-		<param name="min_add_scan_shift" value="1.0" />
-		<param name="target_map_lengh" value="8.0" />
+		<param name="min_add_scan_shift" value="5.0" />
+		<param name="target_map_lengh" value="5.0" />
 		<param name="max_lookup_LCdist" value="10.0" />
 		<param name="max_score_for_LC" value="3.5" />
 		<param name="min_edges_for_LC" value="2" />
@@ -41,5 +41,9 @@
 
 	</node>
 
-	<node type="rviz" name="rviz" pkg="rviz" args="-d $(find slam)/config/ndt_slam.rviz" />
+	<node name="hitlc_finder_node" pkg="slam" type="hitlc_finder_node" output="screen"/>
+
+	<node type="rviz" name="slam_rviz" pkg="rviz" args="-d $(find slam)/config/ndt_slam.rviz" />
+
+	<node type="rviz" name="hitlc_finder_rviz" pkg="rviz" args="-d $(find slam)/config/hitlc_finder.rviz" />
 </launch>

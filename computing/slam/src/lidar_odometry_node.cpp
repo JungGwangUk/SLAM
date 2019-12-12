@@ -85,12 +85,10 @@ void TPointsCB(const sensor_msgs::PointCloud2ConstPtr points)
 
   T_points_pub_.publish(points_msg);
 
-  if(dist_>accumulation_dist_)
-  {
-    A_points_pub_.publish(assemble_points_msg);
-    assemble_cloud_ptr_->clear();
-    dist_ = 0.0;
-  }
+
+  A_points_pub_.publish(assemble_points_msg);
+  assemble_cloud_ptr_->clear();
+
 
 }
 

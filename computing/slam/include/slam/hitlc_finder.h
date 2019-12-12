@@ -11,9 +11,14 @@
 #include <slam/SLAM3DSystem.h>
 
 #include <ndt_gpu/NormalDistributionsTransform.h>
+#include <ndt_cpu/NormalDistributionsTransform.h>
+#include <pcl/registration/ndt.h>
 
 #include <hitlc_msgs/InputTargetArray.h>
 #include <hitlc_msgs/InputTarget.h>
+
+#include <hitlc_msgs/LCInfo.h>
+#include <hitlc_msgs/LCinfoArray.h>
 
 boost::shared_ptr<interactive_markers::InteractiveMarkerServer> _server;
 
@@ -34,9 +39,12 @@ ros::Publisher _LC_info_pub;
 IntMarkerAPI _intMarker;
 SLAM3DSystem _slam3d;
 gpu::GNormalDistributionsTransform _gpu_ndt;
+//cpu::NormalDistributionsTransform<pcl::PointXYZ, pcl::PointXYZ> _cpu_ndt;
+pcl::NormalDistributionsTransform<pcl::PointXYZI, pcl::PointXYZI> _ndt;
 
 interactive_markers::MenuHandler _input_vertex_menu_handler;
 
 hitlc_msgs::InputTargetArray _ITarray;
 
-void ndt_scanmatching();
+Eigen::Matrix4f ndt_scanmatching(pcl::PointCloud<pcl::PointXYZI>::Ptr target_map_pcl_ptr,
+                                 pcl::PointCloud<pcl::PointXYZI>::Ptr input_map_pcl_ptr, Eigen::Matrix4f init_guess);

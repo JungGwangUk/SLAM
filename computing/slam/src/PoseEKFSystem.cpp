@@ -71,7 +71,7 @@ void PoseEKFSystem::Init()
     Q_.setIdentity();
 
     P_ = P_*0.0001;
-    Q_ = Q_*0.1;
+    Q_ = Q_*0.001;
     R_ = R_*0.1;
 //    Q_(2,2) = 0.1;
 }

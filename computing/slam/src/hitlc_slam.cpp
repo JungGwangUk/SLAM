@@ -3,7 +3,6 @@
 //
 #include <slam/hitlc_slam.h>
 
-pcl::PointCloud<pcl::PointXYZI>::Ptr final_map_ptr(new pcl::PointCloud<pcl::PointXYZI>);
 
 SLAM3DSystem slam3d;
 PoseEKFSystem pose_ekf;
@@ -21,6 +20,8 @@ int hitlc_count = 0;
 ros::Publisher gt_pub;
 ros::Publisher imu_odom_pub;
 
+std::clock_t tic,toc;
+
 bool init_gt = false;
 bool first_novatel =true;
 FILE *fp;
@@ -31,335 +32,351 @@ FILE *imu_data;
 
 void LidarCB(const sensor_msgs::PointCloud2ConstPtr &input)
 {
-    if(_use_gps_init)
-    {
-        if(first_novatel)
-        {
-            ROS_WARN("Waiting for receiving GPS data");
-            return;
-        }
-        else
-        {
-            if(!init_gt)
-            {
-                _previous_pose.x = origin.pose.pose.position.x;
-                _previous_pose.y = origin.pose.pose.position.y;
-                _previous_pose.z = origin.pose.pose.position.z;
-                tf::Quaternion q;
-                tf::quaternionMsgToTF(origin.pose.pose.orientation, q);
-                tf::Matrix3x3(q).getRPY(_previous_pose.roll, _previous_pose.pitch, _previous_pose.yaw);
-                _pred_pose << _previous_pose.x, _previous_pose.y, _previous_pose.z;
-                pose_ekf.X_ = _pred_pose;
-                _curr_rpy << _previous_pose.roll, _previous_pose.pitch, _previous_pose.yaw;
-                init_gt = true;
-            }
-        }
-    }
-    if(!_use_imu)
-    {
-        ROS_WARN("Waiting for receiving IMU data");
-        return;
-    }
+  if(_use_gps_init)
+  {
+      if(first_novatel)
+      {
+          ROS_WARN("Waiting for receiving GPS data");
+          return;
+      }
+      else
+      {
+          if(!init_gt)
+          {
+            _previous_pose.x = origin.pose.pose.position.x;
+            _previous_pose.y = origin.pose.pose.position.y;
+            _previous_pose.z = origin.pose.pose.position.z;
+            tf::Quaternion q;
+            tf::quaternionMsgToTF(origin.pose.pose.orientation, q);
+            tf::Matrix3x3(q).getRPY(_previous_pose.roll, _previous_pose.pitch, _previous_pose.yaw);
+            _pred_pose << _previous_pose.x, _previous_pose.y, _previous_pose.z;
+            pose_ekf.X_ = _pred_pose;
+            _curr_rpy << _previous_pose.roll, _previous_pose.pitch, _previous_pose.yaw;
+            _prev_rpy << _previous_pose.roll, _previous_pose.pitch, _previous_pose.yaw;
+            init_gt = true;
+          }
+      }
+  }
+  if(!_use_imu)
+  {
+      ROS_WARN("Waiting for receiving IMU data");
+      return;
+  }
 
-    static double num_target_map_idx =  _target_map_lengh/_min_add_scan_shift;
-    static double r;
+  static double r;
 
-    pcl::PointXYZI p;
-    pcl::PointCloud<pcl::PointXYZI> tmp, scan;
-    pcl::PointCloud<pcl::PointXYZI>::Ptr filtered_scan_ptr(new pcl::PointCloud<pcl::PointXYZI>());
-    pcl::PointCloud<pcl::PointXYZI>::Ptr transformed_scan_ptr(new pcl::PointCloud<pcl::PointXYZI>());
+  pcl::PointXYZI p;
+  pcl::PointCloud<pcl::PointXYZI> tmp, scan;
+  pcl::PointCloud<pcl::PointXYZI>::Ptr transformed_scan_ptr(new pcl::PointCloud<pcl::PointXYZI>());
 
-    Eigen::Matrix4f t_localizer(Eigen::Matrix4f::Identity());
-    Eigen::Matrix4f t_lidar_base(Eigen::Matrix4f::Identity());
+  Eigen::Matrix4f t_localizer(Eigen::Matrix4f::Identity());
+  Eigen::Matrix4f t_lidar_base(Eigen::Matrix4f::Identity());
 
-    static tf::TransformBroadcaster br;
-    static tf::TransformBroadcaster br2;
+  static tf::TransformBroadcaster br;
+  static tf::TransformBroadcaster br2;
 
-    tf::Transform transform_m2v;
-    tf::Transform transform_v2l;
+  tf::Transform transform_m2v;
+  tf::Transform transform_v2l;
 
-    SLAM3DSystem::RPYpose current_pose, localizer_pose, guess_pose;
+  SLAM3DSystem::RPYpose current_pose, localizer_pose, guess_pose;
 
-    ros::Time curr_scan_time;
-    curr_scan_time = input->header.stamp;
+  ros::Time curr_scan_time;
+  curr_scan_time = input->header.stamp;
 
-    pcl::fromROSMsg(*input, tmp);
+  pcl::fromROSMsg(*input, tmp);
 
-    //Set point scan range and filtering
-    for (pcl::PointCloud<pcl::PointXYZI>::const_iterator item = tmp.begin(); item != tmp.end(); item++)
-    {
-        p.x = (double)item->x;
-        p.y = (double)item->y;
-        p.z = (double)item->z;
-        p.intensity = (double)item->intensity;
+  //Set point scan range and filtering
+  tic = std::clock();
+  for (pcl::PointCloud<pcl::PointXYZI>::const_iterator item = tmp.begin(); item != tmp.end(); item++)
+  {
+      p.x = (double)item->x;
+      p.y = (double)item->y;
+      p.z = (double)item->z;
+      p.intensity = (double)item->intensity;
 
-        r = sqrt(pow(p.x, 2.0) + pow(p.y, 2.0));
-        if (_min_scan_range < r && r < _max_scan_range)
-        {
-            scan.push_back(p);
-        }
-    }
+      r = sqrt(pow(p.x, 2.0) + pow(p.y, 2.0));
+      if (_min_scan_range < r && r < _max_scan_range)
+      {
+          scan.push_back(p);
+      }
+  }
+  toc = std::clock();
+//  cout << "range filtering : " << (toc-tic)/(double)CLOCKS_PER_SEC << std::endl;
 
-    pcl::PointCloud<pcl::PointXYZI>::Ptr before_scan_ptr(new pcl::PointCloud<pcl::PointXYZI>(scan));
-    pcl::PointCloud<pcl::PointXYZI>::Ptr scan_ptr(new pcl::PointCloud<pcl::PointXYZI>);
 
-    // Voxel Grid Filter
-    pcl::VoxelGrid<pcl::PointXYZI> voxel_grid_filter;
-    voxel_grid_filter.setLeafSize(_voxel_leaf_size, _voxel_leaf_size, _voxel_leaf_size);
-    voxel_grid_filter.setInputCloud(before_scan_ptr);
-    voxel_grid_filter.filter(*scan_ptr);
+  pcl::PointCloud<pcl::PointXYZI>::Ptr before_scan_ptr(new pcl::PointCloud<pcl::PointXYZI>(scan));
+  pcl::PointCloud<pcl::PointXYZI>::Ptr filtered_scan_ptr(new pcl::PointCloud<pcl::PointXYZI>);
 
-    // Add initial point cloud to velodyne_map
-    if (!_initial_scan_loaded)
-    {
-        Matrix4f init_pose;
-        slam3d.RPYposeToMatrix(_previous_pose, init_pose);
-        pcl::transformPointCloud(*scan_ptr, *transformed_scan_ptr, init_pose*_tf_vtol);
-        _target_points += *transformed_scan_ptr;
-        _prev_states = _curr_states;
-        _prev_scan_time = curr_scan_time;
-        _initial_scan_loaded = true;
+  // Input points Voxel Grid Filter
+  pcl::VoxelGrid<pcl::PointXYZI> voxel_grid_filter;
+  voxel_grid_filter.setLeafSize(_voxel_leaf_size, _voxel_leaf_size, _voxel_leaf_size);
+  voxel_grid_filter.setInputCloud(before_scan_ptr);
+  voxel_grid_filter.filter(*filtered_scan_ptr);
 
-        return;
-    }
-
-    if(_is_optimized)
-    {
-        double p[7];
-        _vertex_old_ptr->getEstimateData(p);
-
-        slam3d.EstimateToRPYpose(p, _previous_pose);
-
-        _pred_pose << _previous_pose.x, _previous_pose.y, _previous_pose.z;
-        pose_ekf.X_= _pred_pose;
-
-        // reset target and final map point cloud
-        _target_points.clear();
-        final_map_ptr->clear();
-
-        _lookup_LCdist = 0.0;
-        _map_pub_id += 50;
-
-        // rebuild final map
-        slam3d.buildCloudMap(*final_map_ptr);
-        cout << "rebuild final map" << endl;
-
-        sensor_msgs::PointCloud2::Ptr map_msg_ptr(new sensor_msgs::PointCloud2);
-        pcl::toROSMsg(*final_map_ptr, *map_msg_ptr);
-        map_msg_ptr->header.frame_id = "map";
-        _ndt_LC_map_publish.publish(*map_msg_ptr);
-
-        // rebuild target map
-        pcl::PointCloud<pcl::PointXYZI> transformed_cloud;
-        for(int i=slam3d.vertexMap.size()-num_target_map_idx; i<slam3d.vertexMap.size(); i++)
-        {
-            Matrix4d T = slam3d.vertexMap[i]->estimate().matrix()*_tf_vtol.matrix().cast<double>();
-            pcl::transformPointCloud(slam3d.vertexMap[i]->scan_data, transformed_cloud, T);
-
-            _target_points += transformed_cloud;
-        }
-        _is_optimized = false;
-    }
-
-    pcl::PointCloud<pcl::PointXYZI>::Ptr map_ptr(new pcl::PointCloud<pcl::PointXYZI>(_target_points));
-
-    gpu_ndt.setInputTarget(map_ptr);
-    gpu_ndt.setTransformationEpsilon(_trans_eps);
-    gpu_ndt.setStepSize(_step_size);
-    gpu_ndt.setResolution(_ndt_res);
-    gpu_ndt.setMaximumIterations(30);
-    gpu_ndt.setInputSource(scan_ptr);
-
-    if(_use_vehicle_statas)
-    {
-        if(_use_imu)
-        {
-            guess_pose.x = _pred_pose[0];
-            guess_pose.y = _pred_pose[1];
-            guess_pose.z = _pred_pose[2];
-            guess_pose.roll = _curr_rpy[0];
-            guess_pose.pitch = _curr_rpy[1];
-            guess_pose.yaw = _curr_rpy[2];
-        }
-        else
-        {
-            double dt = (curr_scan_time-_prev_scan_time).toSec();
-            guess_pose = _previous_pose;
-            guess_pose.yaw = _previous_pose.yaw+_prev_states.state.velocity*tan(_prev_states.state.wheel_angle)*dt/2.0;
-            guess_pose.x = _previous_pose.x+_prev_states.state.velocity*cos(_previous_pose.yaw)*dt;
-            guess_pose.y = _previous_pose.y+_prev_states.state.velocity*sin(_previous_pose.yaw)*dt;
-        }
-    }
-    else
-        guess_pose = _previous_pose;
-
-    Eigen::Matrix4f init_guess;
-    slam3d.RPYposeToMatrix(guess_pose, init_guess);
-    init_guess = init_guess*_tf_vtol;
-
-    SLAM3DSystem::RPYpose test_pose;
-    slam3d.MatrixToRPYpose(init_guess, test_pose);
-
-    // NDT matching
-    gpu_ndt.align(init_guess);
-    cout << gpu_ndt.getFinalNumIteration() << "  " << gpu_ndt.getFitnessScore() << " : " << gpu_ndt.hasConverged() << endl;
-
-    // Getting NDT result
-    t_lidar_base = gpu_ndt.getFinalTransformation();
-
-    t_localizer = t_lidar_base*_tf_ltov;
-
-    // Update localizer_pose from NDT.
-    slam3d.MatrixToRPYpose(t_localizer, localizer_pose);
-
-    if(_use_ekf)
-    {
-        Vector3d z(localizer_pose.x, localizer_pose.y, localizer_pose.z);
-        Vector3d u(_curr_states.state.velocity, _curr_rpy[1], _curr_rpy[2]);
-
-        double dist = sqrt(pow(localizer_pose.x-_pred_pose[0],2)+pow(localizer_pose.y-_pred_pose[1],2)+pow(localizer_pose.z-_pred_pose[2],2));
-
-        pose_ekf.EKF(_pred_pose, u, z, 0.01);
-
-        current_pose.x = _pred_pose[0];
-        current_pose.y = _pred_pose[1];
-        current_pose.z = _pred_pose[2];
-
-        current_pose.roll = _curr_rpy[0];
-        current_pose.pitch = _curr_rpy[1];
-        current_pose.yaw = localizer_pose.yaw;
-    }
-    else
-        current_pose = localizer_pose;
-
-    Matrix4f final_matrix;
-    slam3d.RPYposeToMatrix(current_pose, final_matrix);
-    pcl::transformPointCloud(*scan_ptr, *transformed_scan_ptr, final_matrix*_tf_vtol);
-
-    ////////////////////////////////////////////////////////////
-    tf::Quaternion q_t;
-    nav_msgs::Odometry predict_odom;
-    predict_odom.header.frame_id = "map";
-    predict_odom.header.stamp = input->header.stamp;
-    predict_odom.pose.pose.position.x = guess_pose.x;
-    predict_odom.pose.pose.position.y = guess_pose.y;
-    predict_odom.pose.pose.position.z = guess_pose.z;
-    q_t.setRPY(guess_pose.roll, guess_pose.pitch, guess_pose.yaw);
-    predict_odom.pose.pose.orientation.x = q_t.x();
-    predict_odom.pose.pose.orientation.y = q_t.y();
-    predict_odom.pose.pose.orientation.z = q_t.z();
-    predict_odom.pose.pose.orientation.w = q_t.w();
-
-    _predict_odom_publish.publish(predict_odom);
-
-    nav_msgs::Odometry ndt_odom;
-    ndt_odom.header.frame_id = "map";
-    ndt_odom.header.stamp = input->header.stamp;
-    ndt_odom.pose.pose.position.x = localizer_pose.x;
-    ndt_odom.pose.pose.position.y = localizer_pose.y;
-    ndt_odom.pose.pose.position.z = localizer_pose.z;
-    q_t.setRPY(localizer_pose.roll, localizer_pose.pitch, localizer_pose.yaw);
-    ndt_odom.pose.pose.orientation.x = q_t.x();
-    ndt_odom.pose.pose.orientation.y = q_t.y();
-    ndt_odom.pose.pose.orientation.z = q_t.z();
-    ndt_odom.pose.pose.orientation.w = q_t.w();
-
-    _ndt_odom_publish.publish(ndt_odom);
-
-    nav_msgs::Odometry ekf_odom;
-    ekf_odom.header.frame_id = "map";
-    ekf_odom.header.stamp = input->header.stamp;
-    ekf_odom.pose.pose.position.x = current_pose.x;
-    ekf_odom.pose.pose.position.y = current_pose.y;
-    ekf_odom.pose.pose.position.z = current_pose.z;
-    q_t.setRPY(current_pose.roll, current_pose.pitch, current_pose.yaw);
-    ekf_odom.pose.pose.orientation.x = q_t.x();
-    ekf_odom.pose.pose.orientation.y = q_t.y();
-    ekf_odom.pose.pose.orientation.z = q_t.z();
-    ekf_odom.pose.pose.orientation.w = q_t.w();
-
-    _ekf_odom_publish.publish(ekf_odom);
-    //////////////////////////////////////////////////////////
-
-    tf::Quaternion l_q;
-    transform_v2l.setOrigin(tf::Vector3(_tf_x, _tf_y, _tf_z));
-    l_q.setRPY(_tf_roll, _tf_pitch, _tf_yaw);
-    transform_v2l.setRotation(l_q);
-
-    tf::Quaternion q;
-    transform_m2v.setOrigin(tf::Vector3(current_pose.x, current_pose.y, current_pose.z));
-    q.setRPY(current_pose.roll, current_pose.pitch, current_pose.yaw);
-    transform_m2v.setRotation(q);
-
-    br.sendTransform(tf::StampedTransform(transform_m2v, curr_scan_time, "map", "vehicle"));
-    br2.sendTransform(tf::StampedTransform(transform_v2l, curr_scan_time, "vehicle", input->header.frame_id));
-
-    /////////////////////////////// write ground truth
-    double gt_x, gt_y, gt_z, gt_roll, gt_pitch, gt_yaw;
-    tf::Quaternion quat;
-    quat.setValue(gt.pose.pose.orientation.x, gt.pose.pose.orientation.y, gt.pose.pose.orientation.z, gt.pose.pose.orientation.w);
-    tf::Matrix3x3(quat).getRPY(gt_roll, gt_pitch, gt_yaw);
-
-    gt_x = gt.pose.pose.position.x;
-    gt_y = gt.pose.pose.position.y;
-    gt_z = gt.pose.pose.position.z;
-
-    fprintf(fp, "%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf\n",curr_scan_time.toSec(), gt_x, gt_y, gt_z, gt_roll, gt_pitch, gt_yaw, current_pose.x, current_pose.y, current_pose.z, current_pose.roll, current_pose.pitch, current_pose.yaw, gt.pose.covariance[0]);
-    //////////////////////////////
-
-    double shift = sqrt(pow(current_pose.x - _added_pose.x, 2.0) + pow(current_pose.y - _added_pose.y, 2.0));
-    if (shift >= _min_add_scan_shift)
-    {
-        if (1)
-        {
-            fprintf(vertex_time, "%lf %lf %lf %lf %lf %lf %lf %lf\n",curr_scan_time.toSec(), gt_x, gt_y, gt_z, gt_roll, gt_pitch, gt_yaw, gt.pose.covariance[0]);
-
-            _lookup_LCdist += shift/2;
-            if(_lookup_LCdist > _max_lookup_LCdist)
-                _lookup_LCdist = _max_lookup_LCdist;
-
-            _target_points += *transformed_scan_ptr;
-            *final_map_ptr += *transformed_scan_ptr;
-
-            if(slam3d.getID() >= num_target_map_idx)
-            {
-                pcl::PointCloud<pcl::PointXYZI>::iterator iter;
-                iter = _target_points.begin();
-                int erase_size = slam3d.vertexMap[slam3d.getID()-num_target_map_idx]->scan_data.size();
-                _target_points.erase(iter, iter+erase_size);
-            }
-
-            _added_pose = current_pose;
-
-            number_t curr_estimate[7] = {current_pose.x, current_pose.y, current_pose.z, q.x(), q.y(), q.z(), q.w()};
-
-            SLAM(curr_estimate, scan_ptr);
-
-            visualization_msgs::MarkerArray markerArray;
-            slam3d.makeGraphMarkArray(markerArray, _LC_id_map);
-            _graph_markers_publish.publish(markerArray);
-
-            if(slam3d.getID() > _map_pub_id)
-            {
-                sensor_msgs::PointCloud2::Ptr map_msg_ptr(new sensor_msgs::PointCloud2);
-                pcl::toROSMsg(*final_map_ptr, *map_msg_ptr);
-                map_msg_ptr->header.frame_id = "map";
-                _ndt_LC_map_publish.publish(*map_msg_ptr);
-                _map_pub_id += 50;
-            }
-        }
-    }
-
-    _previous_pose = current_pose;
+  // Add initial point cloud to velodyne_map
+  if (!_initial_scan_loaded)
+  {
+    Matrix4f init_pose;
+    slam3d.RPYposeToMatrix(_previous_pose, init_pose);
+    pcl::transformPointCloud(*filtered_scan_ptr, *transformed_scan_ptr, init_pose*_tf_vtol);
+    _filtered_target_points += *transformed_scan_ptr;
     _prev_states = _curr_states;
     _prev_scan_time = curr_scan_time;
+    _initial_scan_loaded = true;
 
-    sensor_msgs::PointCloud2::Ptr target_msg_ptr(new sensor_msgs::PointCloud2);
-    pcl::toROSMsg(_target_points, *target_msg_ptr);
-    target_msg_ptr->header.frame_id = "map";
-    _target_map_publish.publish(*target_msg_ptr);
+    return;
+  }
 
-    _input_cloud_publish.publish(input);
+  if(_is_optimized)
+  {
+
+  }
+
+  pcl::PointCloud<pcl::PointXYZI>::Ptr map_ptr(new pcl::PointCloud<pcl::PointXYZI>(_filtered_target_points));
+
+  gpu_ndt.setInputTarget(map_ptr);
+  gpu_ndt.setTransformationEpsilon(_trans_eps);
+  gpu_ndt.setStepSize(_step_size);
+  gpu_ndt.setResolution(_ndt_res);
+  gpu_ndt.setMaximumIterations(_max_iter);
+  gpu_ndt.setInputSource(filtered_scan_ptr);
+
+  if(_use_vehicle_statas)
+  {
+    if(_use_imu)
+    {
+      guess_pose.x = _pred_pose[0];
+      guess_pose.y = _pred_pose[1];
+      guess_pose.z = _pred_pose[2];
+      guess_pose.roll = _curr_rpy[0];
+      guess_pose.pitch = _curr_rpy[1];
+      guess_pose.yaw = _curr_rpy[2];
+    }
+    else
+    {
+      double dt = (curr_scan_time-_prev_scan_time).toSec();
+      guess_pose = _previous_pose;
+      guess_pose.yaw = _previous_pose.yaw+_prev_states.state.velocity*tan(_prev_states.state.wheel_angle)*dt/2.0;
+      guess_pose.x = _previous_pose.x+_prev_states.state.velocity*cos(_previous_pose.yaw)*dt;
+      guess_pose.y = _previous_pose.y+_prev_states.state.velocity*sin(_previous_pose.yaw)*dt;
+    }
+  }
+  else
+    guess_pose = _previous_pose;
+
+  Eigen::Matrix4f init_guess;
+  slam3d.RPYposeToMatrix(guess_pose, init_guess);
+  init_guess = init_guess*_tf_vtol;
+
+  SLAM3DSystem::RPYpose test_pose;
+  slam3d.MatrixToRPYpose(init_guess, test_pose);
+
+  // NDT matching
+  tic = std::clock();
+  gpu_ndt.align(init_guess);
+  toc = std::clock();
+//  cout << "NDT matching : " << (toc-tic)/(double)CLOCKS_PER_SEC << " : " << gpu_ndt.getFinalNumIteration() << std::endl;
+//  cout << gpu_ndt.getFinalNumIteration() << "  " << gpu_ndt.getFitnessScore() << " : " << gpu_ndt.hasConverged() << endl;
+
+  // Getting NDT result
+  t_lidar_base = gpu_ndt.getFinalTransformation();
+
+  t_localizer = t_lidar_base*_tf_ltov;
+
+  // Update localizer_pose from NDT.
+  slam3d.MatrixToRPYpose(t_localizer, localizer_pose);
+
+  if(_use_ekf)
+  {
+    //In view of NDT's fail
+    Vector3d z;
+    if(gpu_ndt.getFinalNumIteration()>=_max_iter)
+    {
+      z << _pred_pose[0], _pred_pose[1], _pred_pose[2];
+      current_pose.yaw = _curr_rpy[2];
+      ROS_WARN("NDT scan matching was fail");
+    }
+    else
+    {
+      z<< localizer_pose.x, localizer_pose.y, localizer_pose.z;
+      current_pose.yaw = localizer_pose.yaw;
+    }
+
+    Vector3d u(_curr_states.state.velocity, _curr_rpy[1], _curr_rpy[2]);
+
+    double dist = sqrt(pow(localizer_pose.x-_pred_pose[0],2)+pow(localizer_pose.y-_pred_pose[1],2)+pow(localizer_pose.z-_pred_pose[2],2));
+
+    pose_ekf.EKF(_pred_pose, u, z, 0.01);
+
+    current_pose.x = _pred_pose[0];
+    current_pose.y = _pred_pose[1];
+    current_pose.z = _pred_pose[2];
+
+    current_pose.roll = _curr_rpy[0];
+    current_pose.pitch = _curr_rpy[1];
+
+//    cout << "ndt yaw : " << localizer_pose.yaw << endl;
+
+    _prev_rpy << current_pose.roll, current_pose.pitch, current_pose.yaw;
+  }
+  else
+    current_pose = localizer_pose;
+
+  Matrix4f final_matrix;
+  slam3d.RPYposeToMatrix(current_pose, final_matrix);
+  pcl::transformPointCloud(*filtered_scan_ptr, *transformed_scan_ptr, final_matrix*_tf_vtol);
+
+  ////////////////////////////////////////////////////////////
+//  tf::Quaternion q_t;
+//  nav_msgs::Odometry predict_odom;
+//  predict_odom.header.frame_id = "map";
+//  predict_odom.header.stamp = input->header.stamp;
+//  predict_odom.pose.pose.position.x = guess_pose.x;
+//  predict_odom.pose.pose.position.y = guess_pose.y;
+//  predict_odom.pose.pose.position.z = guess_pose.z;
+//  q_t.setRPY(guess_pose.roll, guess_pose.pitch, guess_pose.yaw);
+//  predict_odom.pose.pose.orientation.x = q_t.x();
+//  predict_odom.pose.pose.orientation.y = q_t.y();
+//  predict_odom.pose.pose.orientation.z = q_t.z();
+//  predict_odom.pose.pose.orientation.w = q_t.w();
+//
+//  _predict_odom_publish.publish(predict_odom);
+//
+//  nav_msgs::Odometry ndt_odom;
+//  ndt_odom.header.frame_id = "map";
+//  ndt_odom.header.stamp = input->header.stamp;
+//  ndt_odom.pose.pose.position.x = localizer_pose.x;
+//  ndt_odom.pose.pose.position.y = localizer_pose.y;
+//  ndt_odom.pose.pose.position.z = localizer_pose.z;
+//  q_t.setRPY(localizer_pose.roll, localizer_pose.pitch, localizer_pose.yaw);
+//  ndt_odom.pose.pose.orientation.x = q_t.x();
+//  ndt_odom.pose.pose.orientation.y = q_t.y();
+//  ndt_odom.pose.pose.orientation.z = q_t.z();
+//  ndt_odom.pose.pose.orientation.w = q_t.w();
+//
+//  _ndt_odom_publish.publish(ndt_odom);
+//
+//  nav_msgs::Odometry ekf_odom;
+//  ekf_odom.header.frame_id = "map";
+//  ekf_odom.header.stamp = input->header.stamp;
+//  ekf_odom.pose.pose.position.x = current_pose.x;
+//  ekf_odom.pose.pose.position.y = current_pose.y;
+//  ekf_odom.pose.pose.position.z = current_pose.z;
+//  q_t.setRPY(current_pose.roll, current_pose.pitch, current_pose.yaw);
+//  ekf_odom.pose.pose.orientation.x = q_t.x();
+//  ekf_odom.pose.pose.orientation.y = q_t.y();
+//  ekf_odom.pose.pose.orientation.z = q_t.z();
+//  ekf_odom.pose.pose.orientation.w = q_t.w();
+//
+//  _ekf_odom_publish.publish(ekf_odom);
+  //////////////////////////////////////////////////////////
+
+  tf::Quaternion l_q;
+  transform_v2l.setOrigin(tf::Vector3(_tf_x, _tf_y, _tf_z));
+  l_q.setRPY(_tf_roll, _tf_pitch, _tf_yaw);
+  transform_v2l.setRotation(l_q);
+
+  tf::Quaternion q;
+  transform_m2v.setOrigin(tf::Vector3(current_pose.x, current_pose.y, current_pose.z));
+  q.setRPY(current_pose.roll, current_pose.pitch, current_pose.yaw);
+  transform_m2v.setRotation(q);
+
+  br.sendTransform(tf::StampedTransform(transform_m2v, curr_scan_time, "map", "vehicle"));
+  br2.sendTransform(tf::StampedTransform(transform_v2l, curr_scan_time, "vehicle", input->header.frame_id));
+
+  /////////////////////////////// write ground truth
+//  double gt_x, gt_y, gt_z, gt_roll, gt_pitch, gt_yaw;
+//  tf::Quaternion quat;
+//  quat.setValue(gt.pose.pose.orientation.x, gt.pose.pose.orientation.y, gt.pose.pose.orientation.z, gt.pose.pose.orientation.w);
+//  tf::Matrix3x3(quat).getRPY(gt_roll, gt_pitch, gt_yaw);
+//
+//  gt_x = gt.pose.pose.position.x;
+//  gt_y = gt.pose.pose.position.y;
+//  gt_z = gt.pose.pose.position.z;
+
+//  fprintf(fp, "%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf\n",curr_scan_time.toSec(), gt_x, gt_y, gt_z, gt_roll, gt_pitch, gt_yaw, current_pose.x, current_pose.y, current_pose.z, current_pose.roll, current_pose.pitch, current_pose.yaw, gt.pose.covariance[0]);
+  //////////////////////////////
+
+  // Target Points Update and Voxel Grid Filter
+  _filtered_target_points += *transformed_scan_ptr;
+  pcl::PointCloud<pcl::PointXYZI>::Ptr updated_target_ptr(new pcl::PointCloud<pcl::PointXYZI>(_filtered_target_points));
+  voxel_grid_filter.setLeafSize(_voxel_leaf_size, _voxel_leaf_size, _voxel_leaf_size);
+  voxel_grid_filter.setInputCloud(updated_target_ptr);
+  voxel_grid_filter.filter(_filtered_target_points);
+
+  // Vertex Points Update and Voxel Grid Filter
+  _filtered_vertex_points += *transformed_scan_ptr;
+  pcl::PointCloud<pcl::PointXYZI>::Ptr updated_vertex_ptr(new pcl::PointCloud<pcl::PointXYZI>(_filtered_vertex_points));
+  voxel_grid_filter.setLeafSize(_voxel_leaf_size, _voxel_leaf_size, _voxel_leaf_size);
+  voxel_grid_filter.setInputCloud(updated_vertex_ptr);
+  voxel_grid_filter.filter(_filtered_vertex_points);
+
+  // Add vertex
+  double shift = sqrt(pow(current_pose.x - _added_pose.x, 2.0) + pow(current_pose.y - _added_pose.y, 2.0));
+  if (shift >= _min_add_scan_shift)
+  {
+//    fprintf(vertex_time, "%lf %lf %lf %lf %lf %lf %lf %lf\n",curr_scan_time.toSec(), gt_x, gt_y, gt_z, gt_roll, gt_pitch, gt_yaw, gt.pose.covariance[0]);
+
+    _lookup_LCdist += shift/2;
+    if(_lookup_LCdist > _max_lookup_LCdist)
+        _lookup_LCdist = _max_lookup_LCdist;
+
+    // update target map
+    tic = std::clock();
+    if(slam3d.getID() >= _num_target_map_idx)
+    {
+      for(int i=1; i<=_num_target_map_idx; i++)
+      {
+        pcl::PointCloud<pcl::PointXYZI> transformed_cloud;
+        Matrix4d T = slam3d.vertexMap[slam3d.getID()-i]->estimate().matrix()*_tf_vtol.matrix().cast<double>();
+        pcl::transformPointCloud(slam3d.vertexMap[slam3d.getID()-i]->scan_data, transformed_cloud, T);
+        if(i==1)
+          _filtered_target_points = transformed_cloud;
+        else
+          _filtered_target_points += transformed_cloud;
+      }
+    }
+    toc = std::clock();
+//    cout << "update target map : " << (toc-tic)/(double)CLOCKS_PER_SEC << std::endl;
+
+    pcl::PointCloud<pcl::PointXYZI>::Ptr final_vertex_points_ptr(new pcl::PointCloud<pcl::PointXYZI>());
+    Matrix4d T = _tf_vtol.matrix().cast<double>()*final_matrix.inverse().matrix().cast<double>();
+    pcl::transformPointCloud(_filtered_vertex_points, *final_vertex_points_ptr, T);
+    _filtered_vertex_points.clear();
+
+    _added_pose = current_pose;
+
+    number_t curr_estimate[7] = {current_pose.x, current_pose.y, current_pose.z, q.x(), q.y(), q.z(), q.w()};
+
+    pcl::PointCloud<pcl::PointXYZI>::Ptr target_points_ptr(new pcl::PointCloud<pcl::PointXYZI>(_filtered_target_points));
+    SLAM(curr_estimate, final_vertex_points_ptr);
+
+    visualization_msgs::MarkerArray markerArray;
+    slam3d.makeGraphMarkArray(markerArray, _LC_id_map);
+    _graph_markers_publish.publish(markerArray);
+
+    *_final_map_ptr += _filtered_target_points;
+
+    if(slam3d.getID() > _map_pub_id)
+    {
+//        sensor_msgs::PointCloud2::Ptr map_msg_ptr(new sensor_msgs::PointCloud2);
+//        pcl::toROSMsg(*_final_map_ptr, *map_msg_ptr);
+//        map_msg_ptr->header.frame_id = "map";
+//        _ndt_LC_map_publish.publish(*map_msg_ptr);
+//        _map_pub_id += 50;
+    }
+  }
+
+  _previous_pose = current_pose;
+  _prev_states = _curr_states;
+  _prev_scan_time = curr_scan_time;
+
+  sensor_msgs::PointCloud2::Ptr target_msg_ptr(new sensor_msgs::PointCloud2);
+  pcl::toROSMsg(_filtered_target_points, *target_msg_ptr);
+  target_msg_ptr->header.frame_id = "map";
+  _target_map_publish.publish(*target_msg_ptr);
+
+  _input_cloud_publish.publish(input);
 }
 
 void SLAM(number_t *estimate, pcl::PointCloud<pcl::PointXYZI>::Ptr point_cloud)
@@ -386,30 +403,94 @@ void SLAM(number_t *estimate, pcl::PointCloud<pcl::PointXYZI>::Ptr point_cloud)
     slam3d.createEdgeSE3(_vertex_old_ptr, vertex_new_ptr, *e);
     slam3d.addEdge(e);
 
-    vector<int> LCids;
-    if(slam3d.searchLoopClosing(vertex_new_ptr, _lookup_LCdist, 5, LCids) && _hitlc_status == FindingCandidate)
+  //searching loop closing candidate
+  tic = clock();
+  vector<int> LCids;
+  if(slam3d.searchLoopClosing(vertex_new_ptr, _lookup_LCdist, 5, LCids) && _hitlc_status == FindingCandidate)
+  {
+    hitlc_count++;
+    cout << "find loop closing vertexes!! [" << LCids.size() << " vertex(s)]"<< endl;
+    hitlc_msgs::InputTargetArray array;
+    for(int i=0; i<LCids.size(); i++)
     {
-        cout << "find loop closing vertexes!! [" << LCids.size() << " vertex(s)]"<< endl;
-        hitlc_msgs::InputTargetArray array;
-        for(int i=0; i<LCids.size(); i++)
-        {
-            hitlc_msgs::InputTarget set;
-            VertexsetToHitLCmsg(*vertex_new_ptr, *slam3d.vertexMap[LCids[i]], set);
-            set_array.sets.push_back(set);
-            hitlc_count++;
-        }
-
-        if(hitlc_count>1)
-        {
-            _hitlc_msg_pub.publish(set_array);
-            hitlc_count = 0;
-            set_array.sets.clear();
-
-            _hitlc_status = FindingLCEdge;
-        }
+      hitlc_msgs::InputTarget set;
+      VertexsetToHitLCmsg(*vertex_new_ptr, *slam3d.vertexMap[LCids[i]], set);
+      set_array.sets.push_back(set);
     }
 
-    _vertex_old_ptr = vertex_new_ptr;
+    if(hitlc_count>5)
+    {
+      _hitlc_msg_pub.publish(set_array);
+      hitlc_count = 0;
+      set_array.sets.clear();
+
+      _hitlc_status = FindingLCEdge;
+    }
+  }
+  toc = clock();
+//  cout << "searching candidate : " << (toc-tic)/(double)CLOCKS_PER_SEC << std::endl;
+
+  // Graph Optimizing
+  if(_hitlc_status == Optimizing)
+  {
+    tic = clock();
+    slam3d.optimizeGraph(100, true);
+    _is_optimized = true;
+    _hitlc_status = FindingCandidate;
+    toc = clock();
+//    cout << "Optimizing : " << (toc-tic)/(double)CLOCKS_PER_SEC << std::endl;
+
+    double p[7];
+    _vertex_old_ptr = slam3d.vertexMap[slam3d.vertexMap.size()-1];
+    _vertex_old_ptr->getEstimateData(p);
+
+    slam3d.EstimateToRPYpose(p, _previous_pose);
+
+    _pred_pose << _previous_pose.x, _previous_pose.y, _previous_pose.z;
+
+    cout << "before : " << _prev_rpy[2] << endl;
+    _prev_rpy << _previous_pose.roll, _previous_pose.pitch, _previous_pose.yaw;
+    cout << "after : " << _prev_rpy[2] << endl;
+    pose_ekf.X_= _pred_pose;
+
+    // reset target and final map point cloud
+    _filtered_target_points.clear();
+    _final_map_ptr->clear();
+
+    _lookup_LCdist = 0.0;
+    _map_pub_id += 50;
+
+    // rebuild final map
+//    tic = std::clock();
+//    slam3d.buildCloudMap(*_final_map_ptr);
+//    cout << "rebuild final map" << endl;
+//    toc = std::clock();
+////    cout << "rebuild final map : " << (toc-tic)/(double)CLOCKS_PER_SEC << std::endl;
+//
+//    sensor_msgs::PointCloud2::Ptr map_msg_ptr(new sensor_msgs::PointCloud2);
+//    pcl::toROSMsg(*_final_map_ptr, *map_msg_ptr);
+//    map_msg_ptr->header.frame_id = "map";
+//    _ndt_LC_map_publish.publish(*map_msg_ptr);
+
+    // rebuild target map
+    for(int i=1; i<=_num_target_map_idx; i++)
+    {
+      pcl::PointCloud<pcl::PointXYZI> transformed_cloud;
+      Matrix4d T = slam3d.vertexMap[slam3d.getID()-i]->estimate().matrix()*_tf_vtol.matrix().cast<double>();
+      pcl::transformPointCloud(slam3d.vertexMap[slam3d.getID()-i]->scan_data, transformed_cloud, T);
+      if(i==1)
+        _filtered_target_points = transformed_cloud;
+      else
+        _filtered_target_points += transformed_cloud;
+
+    }
+
+    _filtered_vertex_points.clear(); /// reset vertex points
+
+    _is_optimized = false;
+  }
+
+  _vertex_old_ptr = vertex_new_ptr;
 }
 
 void VertexsetToHitLCmsg(VertexSE3WithData input, VertexSE3WithData target, hitlc_msgs::InputTarget &set)
@@ -480,80 +561,90 @@ void OdomCB(const nav_msgs::OdometryConstPtr &input)
 
 void ImuCB(const sensor_msgs::ImuConstPtr &input)
 {
-    static bool is_first = true;
-    static sensor_msgs::Imu prev_imu = *input;
+  static bool is_first = true;
+  static sensor_msgs::Imu prev_imu = *input;
 
-    imu = *input;
+  if(is_first)
+  {
+      is_first = false;
+      return;
+  }
 
-    // save data
-    fprintf(imu_data, "%lf %lf %lf %lf %lf %lf %lf\n",input->header.stamp.toSec(), imu.angular_velocity.x, imu.angular_velocity.y, imu.angular_velocity.z, imu.linear_acceleration.x, imu.linear_acceleration.y, imu.linear_acceleration.z);
-    fprintf(vehicle_data, "%lf %lf %lf %lf %lf %lf\n",_curr_states.header.stamp.toSec(), _curr_states.state.velocity,  _curr_states.state.lon_acc, _curr_states.state.lat_acc, _curr_states.state.yaw_rate, _curr_states.state.wheel_angle);
-    // ------------
+  double curr_roll, curr_pitch, curr_yaw, prev_roll, prev_pitch, prev_yaw, dt;
+  double p,q,r;
+  p = prev_imu.angular_velocity.x;
+  q = prev_imu.angular_velocity.y;
+  r = prev_imu.angular_velocity.z;
 
-    // Quat to Euler
-    double a;
-    tf::Quaternion q;
-    tf::quaternionMsgToTF(imu.orientation, q);
-    tf::Matrix3x3(q).getRPY(_curr_rpy[0], _curr_rpy[1], a);
+  imu = *input;
 
-    if(is_first)
-    {
-        is_first = false;
-        return;
-    }
+  dt = (imu.header.stamp - prev_imu.header.stamp).toSec();
 
-    double d_yaw, prev_roll, prev_pitch, prev_yaw, dt;
-    dt = (imu.header.stamp - prev_imu.header.stamp).toSec();
+  tf::Quaternion quat;
 
-    tf::quaternionMsgToTF(prev_imu.orientation, q);
-    tf::Matrix3x3(q).getRPY(prev_roll, prev_pitch, prev_yaw);
+  tf::quaternionMsgToTF(prev_imu.orientation, quat);
+  tf::Matrix3x3(quat).getRPY(prev_roll, prev_pitch, prev_yaw);
 
-    // calculate global yaw
-    d_yaw = prev_imu.angular_velocity.y*sin(prev_roll)/cos(prev_pitch) + prev_imu.angular_velocity.z*cos(prev_roll)/cos(prev_pitch);
-    _curr_rpy[2] += d_yaw*dt;
+  double yaw_rate = q*sin(prev_roll)/cos(prev_pitch) + r*cos(prev_roll)/cos(prev_pitch);
 
-    // predict pose using imu data
-    Vector3d u(_curr_states.state.velocity, _curr_rpy[1], _curr_rpy[2]);
-    pose_ekf.PredictFromModel(_pred_pose, u, dt);
+  tf::quaternionMsgToTF(imu.orientation, quat);
+  tf::Matrix3x3(quat).getRPY(curr_roll, curr_pitch, curr_yaw);
 
-    prev_imu = imu;
 
-    // predict imu pose
-    static Vector3d imu_pose(_previous_pose.x, _previous_pose.y, _previous_pose.z);
-    Vector3d u2(_curr_states.state.velocity, _curr_rpy[1], _curr_rpy[2]);
-    pose_ekf.PredictFromModel(imu_pose, u2, dt);
-    nav_msgs::Odometry imu_odom;
-    imu_odom.header.stamp = input->header.stamp;
-    imu_odom.header.frame_id = "map";
-    imu_odom.pose.pose.position.x = imu_pose[0];
-    imu_odom.pose.pose.position.y = imu_pose[1];
-    imu_odom.pose.pose.position.z = imu_pose[2];
+  _curr_rpy[0] = curr_roll;
+  _curr_rpy[1] = curr_pitch;
+  _curr_rpy[2] = _prev_rpy[2] + yaw_rate*dt;
+  if(_curr_rpy[2]>=M_PI || _curr_rpy[2]<-M_PI)
+  {
+    cout << "yaw :" << _curr_rpy[2] << endl;
+  }
+//  _curr_rpy[2] = normalize_theta(_curr_rpy[2]);
+//  cout << "curr yaw : " << _curr_rpy[2] << endl;
+  // predict pose using imu data
+  Vector3d u(_curr_states.state.velocity, _curr_rpy[1], _curr_rpy[2]);
+  pose_ekf.PredictFromModel(_pred_pose, u, dt);
 
-    imu_odom_pub.publish(imu_odom);
+  prev_imu = imu;
+  _prev_rpy = _curr_rpy;
 
-    if(!_init_imu)
+  // predict imu pose
+  static Vector3d imu_pose(_previous_pose.x, _previous_pose.y, _previous_pose.z);
+  Vector3d u2(_curr_states.state.velocity, _curr_rpy[1], _curr_rpy[2]);
+  pose_ekf.PredictFromModel(imu_pose, u2, dt);
+  nav_msgs::Odometry imu_odom;
+  imu_odom.header.stamp = input->header.stamp;
+  imu_odom.header.frame_id = "map";
+  imu_odom.pose.pose.position.x = imu_pose[0];
+  imu_odom.pose.pose.position.y = imu_pose[1];
+  imu_odom.pose.pose.position.z = imu_pose[2];
+
+  imu_odom_pub.publish(imu_odom);
+
+  if(!_init_imu)
         _init_imu = true;
 }
 
-void LCInfoCB(const hitlc_msgs::LCInfoConstPtr &msg)
+void LCInfoCB(const hitlc_msgs::LCinfoArrayConstPtr &msg)
 {
-    _hitlc_status = Optimizing;
+  _hitlc_status = Optimizing;
 
+  for(int j=0; j<msg->infomations.size(); j++)
+  {
     double meas[7];
     for(int i=0; i<7; i++)
-        meas[i] = msg->meas[i];
+      meas[i] = msg->infomations[j].meas[i];
 
     EdgeSE3 *edge(new EdgeSE3);
-    slam3d.createEdgeSE3(slam3d.vertexMap[msg->input_id], slam3d.vertexMap[msg->target_id], meas, *edge);
+    slam3d.createEdgeSE3(slam3d.vertexMap[msg->infomations[j].input_id], slam3d.vertexMap[msg->infomations[j].target_id], meas, *edge);
     slam3d.addEdge(edge);
 
-    slam3d.optimizeGraph(100, true);
-    _is_optimized = true;
 
     SLAM3DSystem::ids ids;
-    ids.i = msg->input_id;
-    ids.j = msg->target_id;
+    ids.i = msg->infomations[j].input_id;
+    ids.j = msg->infomations[j].target_id;
     _LC_id_map.push_back(ids);
+  }
+
 }
 
 void initParam(ros::NodeHandle pnh)
@@ -561,7 +652,7 @@ void initParam(ros::NodeHandle pnh)
     pnh.param<std::string>("points_topic_name", _points_topic_name, "vlp_t/velodyne_points");
     pnh.param<std::string>("vehicle_state_topic_name", _vehicle_state_topic_name, "/vehicle/state2016");
     pnh.param<std::string>("gps_state_topic_name", _gps_state_topic_name, "/odom");
-    pnh.param<std::string>("imu_topic_name", _imu_topic_name, "/ebimu/RvizData");
+    pnh.param<std::string>("imu_topic_name", _imu_topic_name, "/ekf_imu");
 
     pnh.param<std::string>("save_path", _save_path, "");
 
@@ -615,7 +706,9 @@ void initParam(ros::NodeHandle pnh)
 
     slam3d.save_path = _save_path;
 
-    SaveParam();
+  _num_target_map_idx =  _target_map_lengh/_min_add_scan_shift;
+
+  SaveParam();
 }
 
 void SaveParam()
@@ -691,10 +784,7 @@ int main(int argc, char** argv)
     vertex_time = fopen((_save_path+"vertex_time.txt").c_str(), "w");
     imu_data = fopen((_save_path+"imu_data.txt").c_str(), "w");
 
-    while(ros::ok())
-    {
-        ros::spinOnce();
-    }
+    ros::spin();
 
     if(_save_data)
         slam3d.saveData();

@@ -16,7 +16,15 @@
 #include <velodyne_pointcloud/rawdata.h>
 #include "velodyne_pointcloud/convert.h"
 
+double NormalizeAngle(double angle)
+{
+  if(angle > M_PI)
+    angle -= 2*M_PI;
+  else if(angle < -M_PI)
+    angle += 2*M_PI;
 
+  return angle;
+}
 
 namespace velodyne_pointcloud
 {
@@ -100,14 +108,6 @@ namespace velodyne_pointcloud
         if(i%c == 0)
         {
           int m = float(i/c);
-//          velodyne_msgs::IMURPYpose pose;
-//          pose.x = (pose_array_[m].x-pose_array_[pose_array_.size()-1].x)*1.0;
-//          pose.y = (pose_array_[m].y-pose_array_[pose_array_.size()-1].y)*1.0;
-//          pose.z = (pose_array_[m].z-pose_array_[pose_array_.size()-1].z)*1.0;
-//          pose.roll = (pose_array_[m].roll-pose_array_[pose_array_.size()-1].roll)*1.0;
-//          pose.pitch = (pose_array_[m].pitch-pose_array_[pose_array_.size()-1].pitch)*1.0;
-//          pose.yaw = (pose_array_[m].yaw-pose_array_[pose_array_.size()-1].yaw)*1.0;
-//          T = data_->PoseToMatrix(pose);
 
           T1 = data_->PoseToMatrix(pose_array_[m]);
           T = T2.inverse()*T1;
@@ -120,6 +120,9 @@ namespace velodyne_pointcloud
             d_pose.pitch = pose_array_[m+1].pitch-pose_array_[m].pitch;
             d_pose.yaw = pose_array_[m+1].yaw-pose_array_[m].yaw;
 
+            d_pose.roll = NormalizeAngle(d_pose.roll);
+            d_pose.pitch = NormalizeAngle(d_pose.pitch);
+            d_pose.yaw = NormalizeAngle(d_pose.yaw);
           }
           else
           {

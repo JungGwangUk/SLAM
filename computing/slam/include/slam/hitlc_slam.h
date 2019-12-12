@@ -56,6 +56,7 @@ static float _lookup_LCdist = 0.0;
 static float _voxel_leaf_size;
 static float _min_add_scan_shift;
 static float _max_score_for_LC;
+static float _num_target_map_idx;
 
 static double _trans_eps, _step_size;
 static double _fitness_score;
@@ -107,14 +108,18 @@ static ros::Publisher _hitlc_msg_pub;
 static Eigen::Matrix4f _tf_vtol, _tf_ltov;
 
 static Vector3d _curr_rpy(0.0, 0.0, 0.0);
+static Vector3d _prev_rpy(0.0, 0.0, 0.0);
+
+static Vector3d _rpy_rate(0.0, 0.0, 0.0);
 static Vector3d _pred_pose(0.0, 0.0, 0.0);
 
 VertexSE3WithData* _vertex_old_ptr(new VertexSE3WithData);
 
-pcl::PointCloud<pcl::PointXYZI> _target_points;
+pcl::PointCloud<pcl::PointXYZI> _filtered_target_points;
+pcl::PointCloud<pcl::PointXYZI> _filtered_vertex_points;
+pcl::PointCloud<pcl::PointXYZI>::Ptr _final_map_ptr(new pcl::PointCloud<pcl::PointXYZI>);
 
 vector<SLAM3DSystem::ids> _LC_id_map;
-
 
 void SLAM(number_t *estimate, pcl::PointCloud<pcl::PointXYZI>::Ptr point_cloud);
 void VertexsetToHitLCmsg(VertexSE3WithData input, VertexSE3WithData target, hitlc_msgs::InputTarget &set);
