@@ -123,13 +123,7 @@ void InputVertexFeedback( const visualization_msgs::InteractiveMarkerFeedbackCon
       }
       else if(feedback->menu_entry_id == 2) // Find LC Edge
       {
-        for(int i=0; i<_ITarray.sets.size(); i++)
-        {
-          Eigen::Matrix4f init_guess, final_trans;
 
-          _ITarray.sets[i].target_id;
-
-        }
       }
       else if(feedback->menu_entry_id == 3) // Add LC Edge
       {
@@ -184,7 +178,7 @@ Eigen::Matrix4f ndt_scanmatching(pcl::PointCloud<pcl::PointXYZI>::Ptr target_map
   _gpu_ndt.setInputTarget(target_map_pcl_ptr);
   _gpu_ndt.setTransformationEpsilon(0.01);
   _gpu_ndt.setStepSize(0.1);
-  _gpu_ndt.setResolution(3.0);
+  _gpu_ndt.setResolution(2.0);
   _gpu_ndt.setMaximumIterations(20);
   _gpu_ndt.setInputSource(input_map_pcl_ptr);
 

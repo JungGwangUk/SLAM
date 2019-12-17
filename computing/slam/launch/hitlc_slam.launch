@@ -19,14 +19,14 @@
 		<param name="min_scan_range" value="5.0" />
 		<param name="max_scan_range" value="100.0" />
 		
-		<param name="ndt_res" value="3.0" />
+		<param name="ndt_res" value="2.0" />
 		<param name="max_iter" value="10" />
 		<param name="step_size" value="0.1" />
 		<param name="trans_eps" value="0.01" />
 		<param name="voxel_leaf_size" value="0.5" />
 
 		<param name="min_add_scan_shift" value="5.0" />
-		<param name="target_map_lengh" value="5.0" />
+		<param name="target_map_lengh" value="10.0" />
 		<param name="max_lookup_LCdist" value="10.0" />
 		<param name="max_score_for_LC" value="3.5" />
 		<param name="min_edges_for_LC" value="2" />

@@ -2,10 +2,7 @@
 
 void PoseEKFSystem::EKF(Eigen::Vector3d &X, const Eigen::Vector3d u, const Eigen::Vector3d z, const float dt)
 {
-    double v,theta,psi;
-    v = u[0];
-    theta = u[1];
-    psi = u[2];
+//  PredictFromModel(X, u, dt);
 
     F_ << 0,   0,  0,
           0,   0,  0,
