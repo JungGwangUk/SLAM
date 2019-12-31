@@ -55,7 +55,10 @@ void LidarCB(const sensor_msgs::PointCloud2ConstPtr &input)
   }
 
 
+
   
+
+
   static double r;
 
   pcl::PointXYZI p;
