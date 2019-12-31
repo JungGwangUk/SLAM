@@ -13,9 +13,14 @@
 using namespace gps_common;
 
 static ros::Publisher odom_pub;
-std::string frame_id, child_frame_id;
+std::string frame_id, child_frame_id, fix_topic_name, odom_topic_name;
 double rot_cov;
 bool append_zone = false;
+bool relativ_gps = false;
+
+double origin_x = 0.0;
+double origin_y = 0.0;
+double origin_z = 0.0;
 
 void callback(const sensor_msgs::NavSatFixConstPtr& fix) {
   if (fix->status.status == sensor_msgs::NavSatStatus::STATUS_NO_FIX) {
@@ -31,6 +36,15 @@ void callback(const sensor_msgs::NavSatFixConstPtr& fix) {
   std::string zone;
 
   LLtoUTM(fix->latitude, fix->longitude, northing, easting, zone);
+
+  if(origin_x==0.0 && origin_y==0.0){
+    origin_x = easting;
+    origin_y = northing;
+    origin_z = fix->altitude;
+
+    ROS_INFO("origin_x = %f, origin_y = %f, origin_z = %f",origin_x,origin_y,origin_z);
+  }
+
 
   if (odom_pub) {
     nav_msgs::Odometry odom;
@@ -52,9 +66,16 @@ void callback(const sensor_msgs::NavSatFixConstPtr& fix) {
 
     odom.child_frame_id = child_frame_id;
 
-    odom.pose.pose.position.x = easting;
-    odom.pose.pose.position.y = northing;
-    odom.pose.pose.position.z = fix->altitude;
+    if(relativ_gps)
+    {
+      odom.pose.pose.position.x = easting - origin_x;
+      odom.pose.pose.position.y = northing - origin_y;
+      odom.pose.pose.position.z = fix->altitude - origin_z;
+    } else{
+      odom.pose.pose.position.x = easting;
+      odom.pose.pose.position.y = northing;
+      odom.pose.pose.position.z = fix->altitude;
+    }
     
     odom.pose.pose.orientation.x = 0;
     odom.pose.pose.orientation.y = 0;
@@ -95,10 +116,13 @@ int main (int argc, char **argv) {
   priv_node.param<std::string>("child_frame_id", child_frame_id, "");
   priv_node.param<double>("rot_covariance", rot_cov, 99999.0);
   priv_node.param<bool>("append_zone", append_zone, false);
+  priv_node.param<std::string>("fix_topic_name", fix_topic_name, "fix");
+  priv_node.param<std::string>("odom_topic_name", odom_topic_name, "odom");
+  priv_node.param<bool>("relative_gps", relativ_gps, false);
 
-  odom_pub = node.advertise<nav_msgs::Odometry>("odom", 10);
+  odom_pub = node.advertise<nav_msgs::Odometry>(odom_topic_name, 10);
 
-  ros::Subscriber fix_sub = node.subscribe("fix", 10, callback);
+  ros::Subscriber fix_sub = node.subscribe(fix_topic_name, 10, callback);
 
   ros::spin();
 }

@@ -807,7 +807,7 @@ inline float SQR(float val) { return val*val; }
       for (int firing=0, k=0; firing < VLP16_FIRINGS_PER_BLOCK; firing++){
 
         int i = BLOCKS_PER_PACKET*VLP16_FIRINGS_PER_BLOCK*(index)+VLP16_FIRINGS_PER_BLOCK*block+firing;
-        float ratio = i%N/float(N);
+        float ratio = (i%N)/float(N);
 
         velodyne_msgs::IMURPYpose del_pose;
         del_pose.x = d_pose.x*ratio;
@@ -818,7 +818,6 @@ inline float SQR(float val) { return val*val; }
         del_pose.yaw = d_pose.yaw*ratio;
 
         Eigen::Matrix4d d_T = PoseToMatrix(del_pose);
-//        std::cerr << del_pose.x << " " << d_pose.x << " " << ratio<< std::endl;
         T_fianl = T*d_T*Tml;
 
         for (int dsr=0; dsr < VLP16_SCANS_PER_FIRING; dsr++, k+=RAW_SCAN_SIZE){

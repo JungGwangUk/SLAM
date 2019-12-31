@@ -22,11 +22,9 @@ void SLAM3DSystem::createVertexSE3(const number_t *estimate, pcl::PointCloud<pcl
     v.scan_data = data;
 }
 
-void SLAM3DSystem::createEdgeSE3(g2o::VertexSE3WithData *vi, g2o::VertexSE3WithData *vj, g2o::EdgeSE3 &e)
+void SLAM3DSystem::createEdgeSE3(g2o::VertexSE3WithData *vj, g2o::EdgeSE3 &e)
 {
-    if(vi->id()==0)
-        std::cout << _optimizer.vertex(vi->id())->fixed() << std::endl;
-    e.vertices()[0] = _optimizer.vertex(vi->id());
+    e.vertices()[0] = _optimizer.vertex(vj->id()-1);
     e.vertices()[1] = _optimizer.vertex(vj->id());
     e.setMeasurementFromState();
     e.setInformation(g2o::EdgeSE3::InformationType::Identity());
@@ -37,7 +35,7 @@ void SLAM3DSystem::createEdgeSE3(g2o::VertexSE3WithData *vi, g2o::VertexSE3WithD
     e.vertices()[0] = _optimizer.vertex(vi->id());
     e.vertices()[1] = _optimizer.vertex(vj->id());
     e.setMeasurementData(d);
-//    e.setInformation(g2o::EdgeSE3::InformationType::Identity());
+    e.setInformation(g2o::EdgeSE3::InformationType::Identity());
 }
 
 void SLAM3DSystem::RPYposeToMatrix(const RPYpose pose, Eigen::Matrix4f &matrix)
@@ -49,6 +47,20 @@ void SLAM3DSystem::RPYposeToMatrix(const RPYpose pose, Eigen::Matrix4f &matrix)
     Eigen::Translation3f translation(pose.x, pose.y, pose.z);
 
     matrix = (translation * rotation_z * rotation_y * rotation_x).matrix();
+}
+
+void SLAM3DSystem::RPYposeToMeasurement(const RPYpose pose, number_t *d)
+{
+    tf::Quaternion q;
+    q.setRPY(pose.roll, pose.pitch, pose.yaw);
+
+    d[0] = pose.x;
+    d[1] = pose.y;
+    d[2] = pose.z;
+    d[3] = q.x();
+    d[4] = q.y();
+    d[5] = q.z();
+    d[6] = q.w();
 }
 
 void SLAM3DSystem::MatrixToRPYpose(const Eigen::Matrix4f matrix, RPYpose& pose)
@@ -206,12 +218,12 @@ bool SLAM3DSystem::searchLoopClosing(const g2o::VertexSE3WithData* v_current, co
         LCids.push_back(v->first);
         find_LCids = true;
 
-        for(int i=0; i<skip_idx; i++)
-        {
-            v++;
-            if(v == vertexMap.end())
-                break;
-        }
+//        for(int i=0; i<skip_idx; i++)
+//        {
+//            v++;
+//            if(v == vertexMap.end())
+//                break;
+//        }
     }
     return find_LCids;
 }

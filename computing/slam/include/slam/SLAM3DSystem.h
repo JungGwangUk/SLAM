@@ -35,84 +35,86 @@
 class SLAM3DSystem
 {
 public:
-    typedef g2o::BlockSolver<g2o::BlockSolverTraits<-1,-1> > SlamBlockSolver;
-    typedef g2o::LinearSolverCholmod<SlamBlockSolver::PoseMatrixType> SlamLinearSolver;
+  typedef g2o::BlockSolver<g2o::BlockSolverTraits<-1,-1> > SlamBlockSolver;
+  typedef g2o::LinearSolverCholmod<SlamBlockSolver::PoseMatrixType> SlamLinearSolver;
 
-    g2o::OptimizationAlgorithmProperty _currentOptimizationAlgorithmProperty;
-    g2o::OptimizationAlgorithm* _currentSolver;
+  g2o::OptimizationAlgorithmProperty _currentOptimizationAlgorithmProperty;
+  g2o::OptimizationAlgorithm* _currentSolver;
 
-    struct RPYpose
-    {
-        double x;
-        double y;
-        double z;
-        double roll;
-        double pitch;
-        double yaw;
-    };
-    struct ids
-    {
-        int i;
-        int j;
-    };
+  struct RPYpose
+  {
+    double x;
+    double y;
+    double z;
+    double roll;
+    double pitch;
+    double yaw;
+  };
+  struct ids
+  {
+    int i;
+    int j;
+  };
 
-    std::string save_path = "";
+  std::string save_path = "";
 
-    std::map<int, g2o::VertexSE3WithData*> vertexMap;
+  std::map<int, g2o::VertexSE3WithData*> vertexMap;
 
-    SLAM3DSystem();
-    ~SLAM3DSystem();
+  SLAM3DSystem();
+  ~SLAM3DSystem();
 
-    void initG2O(std::string tag);
+  void initG2O(std::string tag);
 
-    void setTF(Eigen::Matrix4f _tf_vtol);
+  void setTF(Eigen::Matrix4f _tf_vtol);
 
-    Eigen::Matrix4f getTF();
+  Eigen::Matrix4f getTF();
 
-    int getID();
+  int getID();
 
-    void setMinAddShift(float min_add_shift);
+  void setMinAddShift(float min_add_shift);
 
-    void createVertexSE3(const number_t *estimate, pcl::PointCloud<pcl::PointXYZI> data, g2o::VertexSE3WithData &v);
+  void createVertexSE3(const number_t *estimate, pcl::PointCloud<pcl::PointXYZI> data, g2o::VertexSE3WithData &v);
 
-    void createEdgeSE3(g2o::VertexSE3WithData *vi, g2o::VertexSE3WithData *vj, g2o::EdgeSE3 &e);
-    void createEdgeSE3(g2o::VertexSE3WithData *vi, g2o::VertexSE3WithData *vj, number_t *d, g2o::EdgeSE3 &e);
+  void createEdgeSE3(g2o::VertexSE3WithData *vj, g2o::EdgeSE3 &e);
+  void createEdgeSE3(g2o::VertexSE3WithData *vi, g2o::VertexSE3WithData *vj, number_t *d, g2o::EdgeSE3 &e);
 
-    void RPYposeToMatrix(const RPYpose pose, Eigen::Matrix4f& matrix);
+  void RPYposeToMatrix(const RPYpose pose, Eigen::Matrix4f& matrix);
 
-    void MatrixToRPYpose(const Eigen::Matrix4f matrix, RPYpose& pose);
+  void RPYposeToMeasurement(const RPYpose pose, number_t *d);
 
-    void MatrixToMeasurement(const Eigen::Matrix4f matrix, number_t *d);
+  void MatrixToRPYpose(const Eigen::Matrix4f matrix, RPYpose& pose);
 
-    void EstimateToMatrix(const number_t *d, Eigen::Matrix4f& matrix);
+  void MatrixToMeasurement(const Eigen::Matrix4f matrix, number_t *d);
 
-    void EstimateToRPYpose(const number_t *d, RPYpose& pose);
+  void EstimateToMatrix(const number_t *d, Eigen::Matrix4f& matrix);
 
-    void buildCloudMap(pcl::PointCloud<pcl::PointXYZI>& cloud_map);
+  void EstimateToRPYpose(const number_t *d, RPYpose& pose);
 
-    void buildLocalCloudMap(const int targetID, const int n_forward, const int n_backward, pcl::PointCloud<pcl::PointXYZI>& target_map);
+  void buildCloudMap(pcl::PointCloud<pcl::PointXYZI>& cloud_map);
 
-    bool searchLoopClosing(const g2o::VertexSE3WithData* v_current, const float lookup_LCdist, const int skip_idx, std::vector<int> &LCids);
+  void buildLocalCloudMap(const int targetID, const int n_forward, const int n_backward, pcl::PointCloud<pcl::PointXYZI>& target_map);
 
-    bool addVertex(g2o::VertexSE3WithData *v);
+  bool searchLoopClosing(const g2o::VertexSE3WithData* v_current, const float lookup_LCdist, const int skip_idx, std::vector<int> &LCids);
 
-    bool addEdge(g2o::EdgeSE3 *e);
+  bool addVertex(g2o::VertexSE3WithData *v);
 
-    void optimizeGraph(int iterations, bool initialize);
+  bool addEdge(g2o::EdgeSE3 *e);
 
-    void ReadData(const std::string path);
+  void optimizeGraph(int iterations, bool initialize);
 
-    void makeGraphMarkArray(visualization_msgs::MarkerArray &markers, const std::vector<ids> LC_id_map);
-    void makeGraphMarkArray(visualization_msgs::MarkerArray &markers);
+  void ReadData(const std::string path);
 
-    bool saveData();
+  void makeGraphMarkArray(visualization_msgs::MarkerArray &markers, const std::vector<ids> LC_id_map);
+  void makeGraphMarkArray(visualization_msgs::MarkerArray &markers);
+
+  bool saveData();
 
 protected:
-    int _v_id;
-    float _min_add_scan_shift;
-    Eigen::Matrix4f _tf_vtol ;
-    Eigen::Matrix4f _tf_ltov ;
+  int _v_id;
+  float _min_add_scan_shift;
+  Eigen::Matrix4f _tf_vtol ;
+  Eigen::Matrix4f _tf_ltov ;
 
 private:
-    g2o::SparseOptimizer _optimizer;
+  g2o::SparseOptimizer _optimizer;
 };

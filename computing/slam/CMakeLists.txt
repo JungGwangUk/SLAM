@@ -89,10 +89,12 @@ add_library(slam3dlib
         include/slam/SLAM3DSystem.h
         include/slam/EKFSystem.h
         include/slam/PoseEKFSystem.h
+        include/slam/PoseEKFSystem2.h
         include/slam/InteractiveMarkersAPI.h
         src/SLAM3DSystem.cpp
         src/EKFSystem.cpp
         src/PoseEKFSystem.cpp
+        src/PoseEKFSystem2.cpp
         src/InteractiveMarkersAPI.cpp
         )
 

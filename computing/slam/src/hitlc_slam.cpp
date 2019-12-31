@@ -9,21 +9,12 @@ PoseEKFSystem pose_ekf;
 gpu::GNormalDistributionsTransform gpu_ndt;
 
 nav_msgs::Odometry origin;
-nav_msgs::Odometry gt;
 
 sensor_msgs::Imu imu;
 
 hitlc_msgs::InputTargetArray set_array;
 int hitlc_count = 0;
 
-
-ros::Publisher gt_pub;
-ros::Publisher imu_odom_pub;
-
-std::clock_t tic,toc;
-
-bool init_gt = false;
-bool first_novatel =true;
 FILE *fp;
 FILE *vehicle_data;
 FILE *param_yaml;
@@ -34,35 +25,37 @@ void LidarCB(const sensor_msgs::PointCloud2ConstPtr &input)
 {
   if(_use_gps_init)
   {
-      if(first_novatel)
+    if(!_get_gps)
+    {
+        ROS_WARN("Waiting for receiving GPS data");
+        return;
+    }
+    else
+    {
+      if(!_init_gps)
       {
-          ROS_WARN("Waiting for receiving GPS data");
-          return;
+        _previous_pose.x = origin.pose.pose.position.x;
+        _previous_pose.y = origin.pose.pose.position.y;
+        _previous_pose.z = origin.pose.pose.position.z;
+        tf::Quaternion q;
+        tf::quaternionMsgToTF(origin.pose.pose.orientation, q);
+        tf::Matrix3x3(q).getRPY(_previous_pose.roll, _previous_pose.pitch, _previous_pose.yaw);
+        _pred_pose << _previous_pose.x, _previous_pose.y, _previous_pose.z;
+        pose_ekf.X_ = _pred_pose;
+        _curr_rpy << _previous_pose.roll, _previous_pose.pitch, _previous_pose.yaw;
+        _prev_rpy << _previous_pose.roll, _previous_pose.pitch, _previous_pose.yaw;
+        _init_gps = true;
       }
-      else
-      {
-          if(!init_gt)
-          {
-            _previous_pose.x = origin.pose.pose.position.x;
-            _previous_pose.y = origin.pose.pose.position.y;
-            _previous_pose.z = origin.pose.pose.position.z;
-            tf::Quaternion q;
-            tf::quaternionMsgToTF(origin.pose.pose.orientation, q);
-            tf::Matrix3x3(q).getRPY(_previous_pose.roll, _previous_pose.pitch, _previous_pose.yaw);
-            _pred_pose << _previous_pose.x, _previous_pose.y, _previous_pose.z;
-            pose_ekf.X_ = _pred_pose;
-            _curr_rpy << _previous_pose.roll, _previous_pose.pitch, _previous_pose.yaw;
-            _prev_rpy << _previous_pose.roll, _previous_pose.pitch, _previous_pose.yaw;
-            init_gt = true;
-          }
-      }
+    }
   }
   if(!_use_imu)
   {
-      ROS_WARN("Waiting for receiving IMU data");
-      return;
+    ROS_WARN("Waiting for receiving IMU data");
+    return;
   }
 
+
+  
   static double r;
 
   pcl::PointXYZI p;
@@ -86,23 +79,19 @@ void LidarCB(const sensor_msgs::PointCloud2ConstPtr &input)
   pcl::fromROSMsg(*input, tmp);
 
   //Set point scan range and filtering
-  tic = std::clock();
   for (pcl::PointCloud<pcl::PointXYZI>::const_iterator item = tmp.begin(); item != tmp.end(); item++)
   {
-      p.x = (double)item->x;
-      p.y = (double)item->y;
-      p.z = (double)item->z;
-      p.intensity = (double)item->intensity;
+    p.x = (double)item->x;
+    p.y = (double)item->y;
+    p.z = (double)item->z;
+    p.intensity = (double)item->intensity;
 
-      r = sqrt(pow(p.x, 2.0) + pow(p.y, 2.0));
-      if (_min_scan_range < r && r < _max_scan_range)
-      {
-          scan.push_back(p);
-      }
+    r = sqrt(pow(p.x, 2.0) + pow(p.y, 2.0));
+    if (_min_scan_range < r && r < _max_scan_range)
+    {
+        scan.push_back(p);
+    }
   }
-  toc = std::clock();
-//  cout << "range filtering : " << (toc-tic)/(double)CLOCKS_PER_SEC << std::endl;
-
 
   pcl::PointCloud<pcl::PointXYZI>::Ptr before_scan_ptr(new pcl::PointCloud<pcl::PointXYZI>(scan));
   pcl::PointCloud<pcl::PointXYZI>::Ptr filtered_scan_ptr(new pcl::PointCloud<pcl::PointXYZI>);
@@ -125,11 +114,6 @@ void LidarCB(const sensor_msgs::PointCloud2ConstPtr &input)
     _initial_scan_loaded = true;
 
     return;
-  }
-
-  if(_is_optimized)
-  {
-
   }
 
   pcl::PointCloud<pcl::PointXYZI>::Ptr map_ptr(new pcl::PointCloud<pcl::PointXYZI>(_filtered_target_points));
@@ -172,10 +156,7 @@ void LidarCB(const sensor_msgs::PointCloud2ConstPtr &input)
   slam3d.MatrixToRPYpose(init_guess, test_pose);
 
   // NDT matching
-  tic = std::clock();
   gpu_ndt.align(init_guess);
-  toc = std::clock();
-//  cout << "NDT matching : " << (toc-tic)/(double)CLOCKS_PER_SEC << " : " << gpu_ndt.getFinalNumIteration() << std::endl;
 //  cout << gpu_ndt.getFinalNumIteration() << "  " << gpu_ndt.getFitnessScore() << " : " << gpu_ndt.hasConverged() << endl;
 
   // Getting NDT result
@@ -214,17 +195,17 @@ void LidarCB(const sensor_msgs::PointCloud2ConstPtr &input)
 
     current_pose.roll = _curr_rpy[0];
     current_pose.pitch = _curr_rpy[1];
-
-//    cout << "ndt yaw : " << localizer_pose.yaw << endl;
-
-    _prev_rpy << current_pose.roll, current_pose.pitch, current_pose.yaw;
+//    current_pose.yaw = _curr_rpy[2];
   }
   else
     current_pose = localizer_pose;
 
+  fprintf(fp, "%lf %lf %lf %lf %lf %lf %lf\n",curr_scan_time.toSec(), current_pose.x, current_pose.y, current_pose.z, current_pose.roll, current_pose.pitch, current_pose.yaw);
+
   Matrix4f final_matrix;
   slam3d.RPYposeToMatrix(current_pose, final_matrix);
   pcl::transformPointCloud(*filtered_scan_ptr, *transformed_scan_ptr, final_matrix*_tf_vtol);
+
 
   ////////////////////////////////////////////////////////////
 //  tf::Quaternion q_t;
@@ -284,19 +265,6 @@ void LidarCB(const sensor_msgs::PointCloud2ConstPtr &input)
   br.sendTransform(tf::StampedTransform(transform_m2v, curr_scan_time, "map", "vehicle"));
   br2.sendTransform(tf::StampedTransform(transform_v2l, curr_scan_time, "vehicle", input->header.frame_id));
 
-  /////////////////////////////// write ground truth
-//  double gt_x, gt_y, gt_z, gt_roll, gt_pitch, gt_yaw;
-//  tf::Quaternion quat;
-//  quat.setValue(gt.pose.pose.orientation.x, gt.pose.pose.orientation.y, gt.pose.pose.orientation.z, gt.pose.pose.orientation.w);
-//  tf::Matrix3x3(quat).getRPY(gt_roll, gt_pitch, gt_yaw);
-//
-//  gt_x = gt.pose.pose.position.x;
-//  gt_y = gt.pose.pose.position.y;
-//  gt_z = gt.pose.pose.position.z;
-
-//  fprintf(fp, "%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf\n",curr_scan_time.toSec(), gt_x, gt_y, gt_z, gt_roll, gt_pitch, gt_yaw, current_pose.x, current_pose.y, current_pose.z, current_pose.roll, current_pose.pitch, current_pose.yaw, gt.pose.covariance[0]);
-  //////////////////////////////
-
   // Target Points Update and Voxel Grid Filter
   _filtered_target_points += *transformed_scan_ptr;
   pcl::PointCloud<pcl::PointXYZI>::Ptr updated_target_ptr(new pcl::PointCloud<pcl::PointXYZI>(_filtered_target_points));
@@ -313,59 +281,43 @@ void LidarCB(const sensor_msgs::PointCloud2ConstPtr &input)
 
   // Add vertex
   double shift = sqrt(pow(current_pose.x - _added_pose.x, 2.0) + pow(current_pose.y - _added_pose.y, 2.0));
-  if (shift >= _min_add_scan_shift)
-  {
-//    fprintf(vertex_time, "%lf %lf %lf %lf %lf %lf %lf %lf\n",curr_scan_time.toSec(), gt_x, gt_y, gt_z, gt_roll, gt_pitch, gt_yaw, gt.pose.covariance[0]);
-
-    _lookup_LCdist += shift/2;
-    if(_lookup_LCdist > _max_lookup_LCdist)
-        _lookup_LCdist = _max_lookup_LCdist;
+  if (shift >= _min_add_scan_shift) {
+    _lookup_LCdist += shift / 10;
+    if (_lookup_LCdist > _max_lookup_LCdist)
+      _lookup_LCdist = _max_lookup_LCdist;
 
     // update target map
-    tic = std::clock();
-    if(slam3d.getID() >= _num_target_map_idx)
-    {
-      for(int i=1; i<=_num_target_map_idx; i++)
-      {
+    if (slam3d.getID() >= _num_target_map_idx) {
+      for (int i = 1; i <= _num_target_map_idx; i++) {
         pcl::PointCloud<pcl::PointXYZI> transformed_cloud;
-        Matrix4d T = slam3d.vertexMap[slam3d.getID()-i]->estimate().matrix()*_tf_vtol.matrix().cast<double>();
-        pcl::transformPointCloud(slam3d.vertexMap[slam3d.getID()-i]->scan_data, transformed_cloud, T);
-        if(i==1)
+        Matrix4d T = slam3d.vertexMap[slam3d.getID() - i]->estimate().matrix() * _tf_vtol.matrix().cast<double>();
+        pcl::transformPointCloud(slam3d.vertexMap[slam3d.getID() - i]->scan_data, transformed_cloud, T);
+        if (i == 1)
           _filtered_target_points = transformed_cloud;
         else
           _filtered_target_points += transformed_cloud;
       }
     }
-    toc = std::clock();
-//    cout << "update target map : " << (toc-tic)/(double)CLOCKS_PER_SEC << std::endl;
 
     pcl::PointCloud<pcl::PointXYZI>::Ptr final_vertex_points_ptr(new pcl::PointCloud<pcl::PointXYZI>());
-    Matrix4d T = _tf_vtol.matrix().cast<double>()*final_matrix.inverse().matrix().cast<double>();
+    Matrix4d T = _tf_vtol.matrix().cast<double>() * final_matrix.inverse().matrix().cast<double>();
     pcl::transformPointCloud(_filtered_vertex_points, *final_vertex_points_ptr, T);
     _filtered_vertex_points.clear();
 
-    _added_pose = current_pose;
-
-    number_t curr_estimate[7] = {current_pose.x, current_pose.y, current_pose.z, q.x(), q.y(), q.z(), q.w()};
-
     pcl::PointCloud<pcl::PointXYZI>::Ptr target_points_ptr(new pcl::PointCloud<pcl::PointXYZI>(_filtered_target_points));
-    SLAM(curr_estimate, final_vertex_points_ptr);
+
+    SLAM(final_vertex_points_ptr, current_pose);
+
+    _added_pose = current_pose;
 
     visualization_msgs::MarkerArray markerArray;
     slam3d.makeGraphMarkArray(markerArray, _LC_id_map);
     _graph_markers_publish.publish(markerArray);
 
     *_final_map_ptr += _filtered_target_points;
-
-    if(slam3d.getID() > _map_pub_id)
-    {
-//        sensor_msgs::PointCloud2::Ptr map_msg_ptr(new sensor_msgs::PointCloud2);
-//        pcl::toROSMsg(*_final_map_ptr, *map_msg_ptr);
-//        map_msg_ptr->header.frame_id = "map";
-//        _ndt_LC_map_publish.publish(*map_msg_ptr);
-//        _map_pub_id += 50;
-    }
   }
+
+  _prev_rpy << current_pose.roll, current_pose.pitch, current_pose.yaw;
 
   _previous_pose = current_pose;
   _prev_states = _curr_states;
@@ -379,78 +331,79 @@ void LidarCB(const sensor_msgs::PointCloud2ConstPtr &input)
   _input_cloud_publish.publish(input);
 }
 
-void SLAM(number_t *estimate, pcl::PointCloud<pcl::PointXYZI>::Ptr point_cloud)
+void SLAM(const pcl::PointCloud<pcl::PointXYZI>::Ptr point_cloud, SLAM3DSystem::RPYpose& curr_pose)
 {
-    VertexSE3WithData* vertex_new_ptr(new VertexSE3WithData);
+  VertexSE3WithData* vertex_new_ptr(new VertexSE3WithData());
+  double curr_estimate[7];
 
-    slam3d.createVertexSE3(estimate, *point_cloud, *vertex_new_ptr);
+  slam3d.RPYposeToMeasurement(curr_pose, curr_estimate);
+  slam3d.createVertexSE3(curr_estimate, *point_cloud, *vertex_new_ptr);
 
-    if(_is_first_vertex)
-    {
-        vertex_new_ptr->setFixed(true);
+  if(_is_first_vertex)
+  {
+      vertex_new_ptr->setFixed(true);
 
-        slam3d.addVertex(vertex_new_ptr);
+      slam3d.addVertex(vertex_new_ptr);
 
-        _is_first_vertex = false;
-        _vertex_old_ptr = vertex_new_ptr;
+      _is_first_vertex = false;
+//      _vertex_old_ptr = vertex_new_ptr;
 
-        cout << "Set First Vertex!!" << endl;
-        return;
-    }
+      cout << "Set First Vertex!!" << endl;
+      return;
+  }
 
-    slam3d.addVertex(vertex_new_ptr);
-    EdgeSE3 *e(new EdgeSE3);
-    slam3d.createEdgeSE3(_vertex_old_ptr, vertex_new_ptr, *e);
-    slam3d.addEdge(e);
+  slam3d.addVertex(vertex_new_ptr);
+  EdgeSE3 *e(new EdgeSE3);
+  slam3d.createEdgeSE3(vertex_new_ptr, *e);
+  slam3d.addEdge(e);
 
   //searching loop closing candidate
-  tic = clock();
   vector<int> LCids;
-  if(slam3d.searchLoopClosing(vertex_new_ptr, _lookup_LCdist, 5, LCids) && _hitlc_status == FindingCandidate)
-  {
-    hitlc_count++;
-    cout << "find loop closing vertexes!! [" << LCids.size() << " vertex(s)]"<< endl;
-    hitlc_msgs::InputTargetArray array;
-    for(int i=0; i<LCids.size(); i++)
-    {
-      hitlc_msgs::InputTarget set;
-      VertexsetToHitLCmsg(*vertex_new_ptr, *slam3d.vertexMap[LCids[i]], set);
-      set_array.sets.push_back(set);
-    }
+  if(_hitlc_status == FindingCandidate){
+    if(slam3d.searchLoopClosing(vertex_new_ptr, _lookup_LCdist, 5, LCids)){
+      hitlc_count++;
+      cout << "find loop closing vertexes!! [" << LCids.size() << " vertex(s)]"<< endl;
+      hitlc_msgs::InputTargetArray array;
+      for(int i=0; i<LCids.size(); i++){
+        hitlc_msgs::InputTarget set;
+        VertexsetToHitLCmsg(*vertex_new_ptr, *slam3d.vertexMap[LCids[i]], set);
+        set_array.sets.push_back(set);
+      }
 
-    if(hitlc_count>5)
-    {
-      _hitlc_msg_pub.publish(set_array);
+      if(hitlc_count>5){
+        _hitlc_msg_pub.publish(set_array);
+        hitlc_count = 0;
+        set_array.sets.clear();
+
+        _hitlc_status = FindingLCEdge;
+      }
+    }
+    else{
+      if(set_array.sets.size()>4){
+        _hitlc_msg_pub.publish(set_array);
+        _hitlc_status = FindingLCEdge;
+      } else _hitlc_status = FindingCandidate;
+
       hitlc_count = 0;
       set_array.sets.clear();
-
-      _hitlc_status = FindingLCEdge;
     }
   }
-  toc = clock();
-//  cout << "searching candidate : " << (toc-tic)/(double)CLOCKS_PER_SEC << std::endl;
+
+//  *_vertex_old_ptr = *vertex_new_ptr;
 
   // Graph Optimizing
   if(_hitlc_status == Optimizing)
   {
-    tic = clock();
     slam3d.optimizeGraph(100, true);
-    _is_optimized = true;
     _hitlc_status = FindingCandidate;
-    toc = clock();
-//    cout << "Optimizing : " << (toc-tic)/(double)CLOCKS_PER_SEC << std::endl;
 
     double p[7];
-    _vertex_old_ptr = slam3d.vertexMap[slam3d.vertexMap.size()-1];
-    _vertex_old_ptr->getEstimateData(p);
+//    *_vertex_old_ptr = *slam3d.vertexMap[slam3d.vertexMap.size()-1];
+//    _vertex_old_ptr->getEstimateData(p);
+    slam3d.vertexMap[slam3d.vertexMap.size()-1]->getEstimateData(p);
 
-    slam3d.EstimateToRPYpose(p, _previous_pose);
-
-    _pred_pose << _previous_pose.x, _previous_pose.y, _previous_pose.z;
-
-    cout << "before : " << _prev_rpy[2] << endl;
-    _prev_rpy << _previous_pose.roll, _previous_pose.pitch, _previous_pose.yaw;
-    cout << "after : " << _prev_rpy[2] << endl;
+    slam3d.EstimateToRPYpose(p, curr_pose);
+    _pred_pose << curr_pose.x, curr_pose.y, curr_pose.z;
     pose_ekf.X_= _pred_pose;
 
     // reset target and final map point cloud
@@ -458,14 +411,10 @@ void SLAM(number_t *estimate, pcl::PointCloud<pcl::PointXYZI>::Ptr point_cloud)
     _final_map_ptr->clear();
 
     _lookup_LCdist = 0.0;
-    _map_pub_id += 50;
 
     // rebuild final map
-//    tic = std::clock();
 //    slam3d.buildCloudMap(*_final_map_ptr);
 //    cout << "rebuild final map" << endl;
-//    toc = std::clock();
-////    cout << "rebuild final map : " << (toc-tic)/(double)CLOCKS_PER_SEC << std::endl;
 //
 //    sensor_msgs::PointCloud2::Ptr map_msg_ptr(new sensor_msgs::PointCloud2);
 //    pcl::toROSMsg(*_final_map_ptr, *map_msg_ptr);
@@ -484,13 +433,8 @@ void SLAM(number_t *estimate, pcl::PointCloud<pcl::PointXYZI>::Ptr point_cloud)
         _filtered_target_points += transformed_cloud;
 
     }
-
     _filtered_vertex_points.clear(); /// reset vertex points
-
-    _is_optimized = false;
   }
-
-  _vertex_old_ptr = vertex_new_ptr;
 }
 
 void VertexsetToHitLCmsg(VertexSE3WithData input, VertexSE3WithData target, hitlc_msgs::InputTarget &set)
@@ -547,16 +491,10 @@ void VehicleStatesCB(const pharos_msgs::StateStamped2016ConstPtr &states)
 
 void OdomCB(const nav_msgs::OdometryConstPtr &input)
 {
-    nav_msgs::Odometry odom;
-    gt = *input;
-    if(first_novatel)
-    {
-        origin = *input;
-        first_novatel = false;
-    }
-    odom.pose = input->pose;
-    odom.header.frame_id = "map";
-    gt_pub.publish(odom);
+
+  origin = *input;
+  _get_gps = true;
+
 }
 
 void ImuCB(const sensor_msgs::ImuConstPtr &input)
@@ -594,34 +532,15 @@ void ImuCB(const sensor_msgs::ImuConstPtr &input)
   _curr_rpy[0] = curr_roll;
   _curr_rpy[1] = curr_pitch;
   _curr_rpy[2] = _prev_rpy[2] + yaw_rate*dt;
-  if(_curr_rpy[2]>=M_PI || _curr_rpy[2]<-M_PI)
-  {
-    cout << "yaw :" << _curr_rpy[2] << endl;
-  }
-//  _curr_rpy[2] = normalize_theta(_curr_rpy[2]);
-//  cout << "curr yaw : " << _curr_rpy[2] << endl;
+
+  _curr_rpy[2] = normalize_theta(_curr_rpy[2]); /// normalizing yaw angle
+
   // predict pose using imu data
   Vector3d u(_curr_states.state.velocity, _curr_rpy[1], _curr_rpy[2]);
   pose_ekf.PredictFromModel(_pred_pose, u, dt);
 
   prev_imu = imu;
   _prev_rpy = _curr_rpy;
-
-  // predict imu pose
-  static Vector3d imu_pose(_previous_pose.x, _previous_pose.y, _previous_pose.z);
-  Vector3d u2(_curr_states.state.velocity, _curr_rpy[1], _curr_rpy[2]);
-  pose_ekf.PredictFromModel(imu_pose, u2, dt);
-  nav_msgs::Odometry imu_odom;
-  imu_odom.header.stamp = input->header.stamp;
-  imu_odom.header.frame_id = "map";
-  imu_odom.pose.pose.position.x = imu_pose[0];
-  imu_odom.pose.pose.position.y = imu_pose[1];
-  imu_odom.pose.pose.position.z = imu_pose[2];
-
-  imu_odom_pub.publish(imu_odom);
-
-  if(!_init_imu)
-        _init_imu = true;
 }
 
 void LCInfoCB(const hitlc_msgs::LCinfoArrayConstPtr &msg)
@@ -647,64 +566,81 @@ void LCInfoCB(const hitlc_msgs::LCinfoArrayConstPtr &msg)
 
 }
 
+void SaveTrigerCB(const std_msgs::BoolConstPtr &msg){
+  if(msg->data)
+  {
+    // rebuild final map
+    _final_map_ptr->clear();
+    slam3d.buildCloudMap(*_final_map_ptr);
+    cout << "rebuild final map" << endl;
+
+    sensor_msgs::PointCloud2::Ptr map_msg_ptr(new sensor_msgs::PointCloud2);
+    pcl::toROSMsg(*_final_map_ptr, *map_msg_ptr);
+    map_msg_ptr->header.frame_id = "map";
+    _ndt_LC_map_publish.publish(*map_msg_ptr);
+
+//    slam3d.saveData();
+  }
+}
+
 void initParam(ros::NodeHandle pnh)
 {
-    pnh.param<std::string>("points_topic_name", _points_topic_name, "vlp_t/velodyne_points");
-    pnh.param<std::string>("vehicle_state_topic_name", _vehicle_state_topic_name, "/vehicle/state2016");
-    pnh.param<std::string>("gps_state_topic_name", _gps_state_topic_name, "/odom");
-    pnh.param<std::string>("imu_topic_name", _imu_topic_name, "/ekf_imu");
+  pnh.param<std::string>("points_topic_name", _points_topic_name, "vlp_t/velodyne_points");
+  pnh.param<std::string>("vehicle_state_topic_name", _vehicle_state_topic_name, "/vehicle/state2016");
+  pnh.param<std::string>("gps_topic_name", _gps_topic_name, "/odom");
+  pnh.param<std::string>("imu_topic_name", _imu_topic_name, "/ekf_imu");
 
-    pnh.param<std::string>("save_path", _save_path, "");
+  pnh.param<std::string>("save_path", _save_path, "");
 
-    pnh.param<std::string>("g2o_solver", _g2o_solver, "gn_var");
+  pnh.param<std::string>("g2o_solver", _g2o_solver, "gn_var");
 
-    pnh.param("use_vehicle_statas", _use_vehicle_statas, true);
-    pnh.param("use_imu", _use_imu, true);
-    pnh.param("use_ekf", _use_ekf, true);
-    pnh.param("use_gps_init", _use_gps_init, false);
-    pnh.param("save_data", _save_data, true);
+  pnh.param("use_vehicle_statas", _use_vehicle_statas, true);
+  pnh.param("use_imu", _use_imu, true);
+  pnh.param("use_ekf", _use_ekf, true);
+  pnh.param("use_gps_init", _use_gps_init, false);
+  pnh.param("save_data", _save_data, true);
 
-    pnh.param<float>("min_scan_range", _min_scan_range, 5.0);
-    pnh.param<float>("max_scan_range", _max_scan_range, 200.0);
+  pnh.param<float>("min_scan_range", _min_scan_range, 5.0);
+  pnh.param<float>("max_scan_range", _max_scan_range, 200.0);
 
-    pnh.param<int>("max_iter", _max_iter, 20);
-    pnh.param<float>("ndt_res", _ndt_res, 2.0);
-    pnh.param<double>("step_size", _step_size, 0.1);
-    pnh.param<double>("trans_eps", _trans_eps, 0.01);
+  pnh.param<int>("max_iter", _max_iter, 20);
+  pnh.param<float>("ndt_res", _ndt_res, 2.0);
+  pnh.param<double>("step_size", _step_size, 0.1);
+  pnh.param<double>("trans_eps", _trans_eps, 0.01);
 
-    pnh.param<float>("voxel_leaf_size", _voxel_leaf_size, 1.0);
+  pnh.param<float>("voxel_leaf_size", _voxel_leaf_size, 1.0);
 
-    pnh.param<float>("min_add_scan_shift", _min_add_scan_shift, 1.0);
-    pnh.param<float>("target_map_lengh", _target_map_lengh, 5.0);
-    pnh.param<float>("max_lookup_LCdist", _max_lookup_LCdist, 30.0);
-    pnh.param<float>("max_score_for_LC", _max_score_for_LC, 2.0);
-    pnh.param<int>("min_edges_for_LC", _min_edges_for_LC, 5);
+  pnh.param<float>("min_add_scan_shift", _min_add_scan_shift, 1.0);
+  pnh.param<float>("target_map_lengh", _target_map_lengh, 5.0);
+  pnh.param<float>("max_lookup_LCdist", _max_lookup_LCdist, 30.0);
+  pnh.param<float>("max_score_for_LC", _max_score_for_LC, 2.0);
+  pnh.param<int>("min_edges_for_LC", _min_edges_for_LC, 5);
 
-    pnh.param<double>("tf_x", _tf_x, 0.0);
-    pnh.param<double>("tf_y", _tf_y, 0.0);
-    pnh.param<double>("tf_z", _tf_z, 0.0);
-    pnh.param<double>("tf_roll", _tf_roll, 0.0);
-    pnh.param<double>("tf_pitch", _tf_pitch, 0.0);
-    pnh.param<double>("tf_yaw", _tf_yaw, 0.0);
+  pnh.param<double>("tf_x", _tf_x, 0.0);
+  pnh.param<double>("tf_y", _tf_y, 0.0);
+  pnh.param<double>("tf_z", _tf_z, 0.0);
+  pnh.param<double>("tf_roll", _tf_roll, 0.0);
+  pnh.param<double>("tf_pitch", _tf_pitch, 0.0);
+  pnh.param<double>("tf_yaw", _tf_yaw, 0.0);
 
-    _previous_pose.x = 0.0;
-    _previous_pose.y = 0.0;
-    _previous_pose.z = 0.0;
-    _previous_pose.roll = 0.0;
-    _previous_pose.pitch = 0.0;
-    _previous_pose.yaw = 0.0;
+  _previous_pose.x = 0.0;
+  _previous_pose.y = 0.0;
+  _previous_pose.z = 0.0;
+  _previous_pose.roll = 0.0;
+  _previous_pose.pitch = 0.0;
+  _previous_pose.yaw = 0.0;
 
-    Translation3f tl_vtol(_tf_x, _tf_y, _tf_z);                 // tl: translation
-    AngleAxisf rot_x_vtol(_tf_roll, Eigen::Vector3f::UnitX());  // rot: rotation
-    AngleAxisf rot_y_vtol(_tf_pitch, Eigen::Vector3f::UnitY());
-    AngleAxisf rot_z_vtol(_tf_yaw, Eigen::Vector3f::UnitZ());
-    _tf_vtol = (tl_vtol * rot_x_vtol * rot_y_vtol * rot_z_vtol).matrix(); // base to lidar
-    _tf_ltov = _tf_vtol.inverse();
+  Translation3f tl_vtol(_tf_x, _tf_y, _tf_z);                 // tl: translation
+  AngleAxisf rot_x_vtol(_tf_roll, Eigen::Vector3f::UnitX());  // rot: rotation
+  AngleAxisf rot_y_vtol(_tf_pitch, Eigen::Vector3f::UnitY());
+  AngleAxisf rot_z_vtol(_tf_yaw, Eigen::Vector3f::UnitZ());
+  _tf_vtol = (tl_vtol * rot_x_vtol * rot_y_vtol * rot_z_vtol).matrix(); // base to lidar
+  _tf_ltov = _tf_vtol.inverse();
 
-    slam3d.setTF(_tf_vtol);
-    slam3d.setMinAddShift(_min_add_scan_shift);
+  slam3d.setTF(_tf_vtol);
+  slam3d.setMinAddShift(_min_add_scan_shift);
 
-    slam3d.save_path = _save_path;
+  slam3d.save_path = _save_path;
 
   _num_target_map_idx =  _target_map_lengh/_min_add_scan_shift;
 
@@ -713,86 +649,85 @@ void initParam(ros::NodeHandle pnh)
 
 void SaveParam()
 {
-    param_yaml = fopen((_save_path+"param.yaml").c_str(), "w");
-    fprintf(param_yaml, "# Additional features \n");
-    fprintf(param_yaml, "use_vehicle_statas: %s\n", _use_vehicle_statas ? "true" : "false");
-    fprintf(param_yaml, "use_imu: %s\n", _use_imu ? "true" : "false");
-    fprintf(param_yaml, "use_ekf: %s\n", _use_ekf ? "true" : "false");
-    fprintf(param_yaml, "use_gps_init: %s\n", _use_gps_init ? "true" : "false");
+  param_yaml = fopen((_save_path+"param.yaml").c_str(), "w");
+  fprintf(param_yaml, "# Additional features \n");
+  fprintf(param_yaml, "use_vehicle_statas: %s\n", _use_vehicle_statas ? "true" : "false");
+  fprintf(param_yaml, "use_imu: %s\n", _use_imu ? "true" : "false");
+  fprintf(param_yaml, "use_ekf: %s\n", _use_ekf ? "true" : "false");
+  fprintf(param_yaml, "use_gps_init: %s\n", _use_gps_init ? "true" : "false");
 
-    fprintf(param_yaml, "# ndt param\n");
-    fprintf(param_yaml, "ndt_res: %f\n",_ndt_res);
-    fprintf(param_yaml, "max_iter: %d\n",_max_iter);
-    fprintf(param_yaml, "step_size: %f\n",_step_size);
-    fprintf(param_yaml, "trans_eps: %f\n",_trans_eps);
-    fprintf(param_yaml, "voxel_leaf_size: %f\n",_voxel_leaf_size);
+  fprintf(param_yaml, "# ndt param\n");
+  fprintf(param_yaml, "ndt_res: %f\n",_ndt_res);
+  fprintf(param_yaml, "max_iter: %d\n",_max_iter);
+  fprintf(param_yaml, "step_size: %f\n",_step_size);
+  fprintf(param_yaml, "trans_eps: %f\n",_trans_eps);
+  fprintf(param_yaml, "voxel_leaf_size: %f\n",_voxel_leaf_size);
 
-    fprintf(param_yaml, "# add graph vertex param\n");
-    fprintf(param_yaml, "min_add_scan_shift: %f\n",_min_add_scan_shift);
+  fprintf(param_yaml, "# add graph vertex param\n");
+  fprintf(param_yaml, "min_add_scan_shift: %f\n",_min_add_scan_shift);
 
-    fprintf(param_yaml, "# vehicle to lidar tf\n");
-    fprintf(param_yaml, "tf_x: %f\n",_tf_x);
-    fprintf(param_yaml, "tf_y: %f\n",_tf_y);
-    fprintf(param_yaml, "tf_z: %f\n",_tf_z);
-    fprintf(param_yaml, "tf_roll: %f\n",_tf_roll);
-    fprintf(param_yaml, "tf_pitch: %f\n",_tf_pitch);
-    fprintf(param_yaml, "tf_yaw: %f\n",_tf_yaw);
+  fprintf(param_yaml, "# vehicle to lidar tf\n");
+  fprintf(param_yaml, "tf_x: %f\n",_tf_x);
+  fprintf(param_yaml, "tf_y: %f\n",_tf_y);
+  fprintf(param_yaml, "tf_z: %f\n",_tf_z);
+  fprintf(param_yaml, "tf_roll: %f\n",_tf_roll);
+  fprintf(param_yaml, "tf_pitch: %f\n",_tf_pitch);
+  fprintf(param_yaml, "tf_yaw: %f\n",_tf_yaw);
 
-    fclose(param_yaml);
+  fclose(param_yaml);
 
-    cout << "Save parameters ("+ _save_path+"param.yaml)" << endl;
+  cout << "Save parameters ("+ _save_path+"param.yaml)" << endl;
 }
 
 int main(int argc, char** argv)
 {
-    ros::init(argc, argv, "hitlc_slam_node");
+  ros::init(argc, argv, "hitlc_slam_node");
 
-    ros::NodeHandle nh;
-    ros::NodeHandle pnh("~");
+  ros::NodeHandle nh;
+  ros::NodeHandle pnh("~");
 
-    initParam(pnh); // Initializing Parameters
-
-    
-    slam3d.initG2O(_g2o_solver); // Initializing G2O
-
-    pose_ekf.Init();
-
-    ros::Subscriber sub_points = nh.subscribe(_points_topic_name, 1000, LidarCB);
-    ros::Subscriber sub_vehicle_states = nh.subscribe(_vehicle_state_topic_name, 1000, VehicleStatesCB);
-    ros::Subscriber sub_odom = nh.subscribe(_gps_state_topic_name, 1000, OdomCB);
-    ros::Subscriber sub_imu = nh.subscribe(_imu_topic_name, 1000, ImuCB);
-    ros::Subscriber sub_lc_info = nh.subscribe("hitlc/lc_info", 1000, LCInfoCB);
-
-    _input_cloud_publish = nh.advertise<sensor_msgs::PointCloud2>("/input_cloud", 1000);
-    _target_map_publish = nh.advertise<sensor_msgs::PointCloud2>("/target_map", 1000);
-    _ndt_LC_map_publish = nh.advertise<sensor_msgs::PointCloud2>("/ndt_LC_map", 1000);
-    _LC_matched_cloud_publish = nh.advertise<sensor_msgs::PointCloud2>("/LC_matched_cloud", 1000);
-    _LC_target_map_publish = nh.advertise<sensor_msgs::PointCloud2>("/LC_target_map", 1000);
-    _LC_input_cloud_publish = nh.advertise<sensor_msgs::PointCloud2>("/LC_input_cloud", 1000);
-
-    _graph_markers_publish = nh.advertise<visualization_msgs::MarkerArray>("/graph_markers", 1000);
-
-    _ekf_odom_publish = nh.advertise<nav_msgs::Odometry>("/ekf_odom", 1000);
-    _predict_odom_publish = nh.advertise<nav_msgs::Odometry>("/predict_odom", 1000);
-    _ndt_odom_publish = nh.advertise<nav_msgs::Odometry>("/ndt_odom", 1000);
-    _hitlc_msg_pub = nh.advertise<hitlc_msgs::InputTargetArray>("hitlc/hitlc_array", 1000);
-    gt_pub = nh.advertise<nav_msgs::Odometry>("/ground_truth", 1000);
-    imu_odom_pub = nh.advertise<nav_msgs::Odometry>("/imu_odom", 1000);
-
-    fp = fopen((_save_path+"ground_truth.txt").c_str(), "w");
-    vehicle_data = fopen((_save_path+"vehicle_data.txt").c_str(), "w");
-    vertex_time = fopen((_save_path+"vertex_time.txt").c_str(), "w");
-    imu_data = fopen((_save_path+"imu_data.txt").c_str(), "w");
-
-    ros::spin();
-
-    if(_save_data)
-        slam3d.saveData();
-
-    fclose(fp);
-    fclose(vehicle_data);
-    fclose(imu_data);
+  initParam(pnh); // Initializing Parameters
 
 
-    return 0;
+  slam3d.initG2O(_g2o_solver); // Initializing G2O
+
+  pose_ekf.Init();
+
+  ros::Subscriber sub_points = nh.subscribe(_points_topic_name, 1000, LidarCB);
+  ros::Subscriber sub_vehicle_states = nh.subscribe(_vehicle_state_topic_name, 1000, VehicleStatesCB);
+  ros::Subscriber sub_odom = nh.subscribe(_gps_topic_name, 1000, OdomCB);
+  ros::Subscriber sub_imu = nh.subscribe(_imu_topic_name, 1000, ImuCB);
+  ros::Subscriber sub_lc_info = nh.subscribe("hitlc/lc_info", 1000, LCInfoCB);
+  ros::Subscriber sub_save_triger = nh.subscribe("save_triger", 1000, SaveTrigerCB);
+
+  _input_cloud_publish = nh.advertise<sensor_msgs::PointCloud2>("/input_cloud", 1000);
+  _target_map_publish = nh.advertise<sensor_msgs::PointCloud2>("/target_map", 1000);
+  _ndt_LC_map_publish = nh.advertise<sensor_msgs::PointCloud2>("/ndt_LC_map", 1000);
+  _LC_matched_cloud_publish = nh.advertise<sensor_msgs::PointCloud2>("/LC_matched_cloud", 1000);
+  _LC_target_map_publish = nh.advertise<sensor_msgs::PointCloud2>("/LC_target_map", 1000);
+  _LC_input_cloud_publish = nh.advertise<sensor_msgs::PointCloud2>("/LC_input_cloud", 1000);
+
+  _graph_markers_publish = nh.advertise<visualization_msgs::MarkerArray>("/graph_markers", 1000);
+
+  _ekf_odom_publish = nh.advertise<nav_msgs::Odometry>("/ekf_odom", 1000);
+  _predict_odom_publish = nh.advertise<nav_msgs::Odometry>("/predict_odom", 1000);
+  _ndt_odom_publish = nh.advertise<nav_msgs::Odometry>("/ndt_odom", 1000);
+  _hitlc_msg_pub = nh.advertise<hitlc_msgs::InputTargetArray>("hitlc/hitlc_array", 1000);
+
+  fp = fopen((_save_path+"ground_truth.txt").c_str(), "w");
+  vehicle_data = fopen((_save_path+"vehicle_data.txt").c_str(), "w");
+  vertex_time = fopen((_save_path+"vertex_time.txt").c_str(), "w");
+  imu_data = fopen((_save_path+"imu_data.txt").c_str(), "w");
+
+  ros::spin();
+
+  if(_save_data)
+      slam3d.saveData();
+
+  fclose(fp);
+  fclose(vehicle_data);
+  fclose(imu_data);
+
+
+  return 0;
 }

@@ -401,7 +401,7 @@ void SLAM(number_t *estimate, pcl::PointCloud<pcl::PointXYZI>::Ptr point_cloud)
 //    /////////////////////////////////////////////////////////////////////////
     slam3d.addVertex(vertex_new_ptr);
     EdgeSE3 *e(new EdgeSE3);
-    slam3d.createEdgeSE3(_vertex_old_ptr, vertex_new_ptr, *e);
+    slam3d.createEdgeSE3(vertex_new_ptr, *e);
     slam3d.addEdge(e);
 
     vector<int> LCids;

@@ -95,13 +95,6 @@ void TPointsCB(const sensor_msgs::PointCloud2ConstPtr points)
 void ImuPoseCB(const velodyne_msgs::IMURPYposeConstPtr pose)
 {
   curr_pose_ = *pose;
-  double dx = curr_pose_.x - prev_pose_.x;
-  double dy = curr_pose_.y - prev_pose_.y;
-  double dz = curr_pose_.z - prev_pose_.z;
-
-  dist_ += sqrt(pow(dx,2)+pow(dy,2)+pow(dz,2));
-
-  prev_pose_ = curr_pose_;
 }
 
 void Init(ros::NodeHandle pnh)

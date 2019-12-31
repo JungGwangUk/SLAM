@@ -7,7 +7,7 @@
 
 		<param name="points_topic_name" value="/transformed_APoints" />
 		<param name="vehicle_state_topic_name" value="/vehicle/state2016" />
-		<param name="gps_state_topic_name" value="/odom/novatel" />
+		<param name="gps_topic_name" value="/odom/ublox" />
 		<param name="imu_topic_name" value="/ekf_imu" />
 
 		<param name="use_vehicle_statas" value="true" />

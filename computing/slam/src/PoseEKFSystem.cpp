@@ -2,12 +2,9 @@
 
 void PoseEKFSystem::EKF(Eigen::Vector3d &X, const Eigen::Vector3d u, const Eigen::Vector3d z, const float dt)
 {
-//  PredictFromModel(X, u, dt);
-
     F_ << 0,   0,  0,
           0,   0,  0,
           0,   0,  0;
-//    std::cout << F_ <<std::endl;
 
     F_ = Eigen::Matrix3d::Identity() + F_*dt;
 
@@ -16,10 +13,7 @@ void PoseEKFSystem::EKF(Eigen::Vector3d &X, const Eigen::Vector3d u, const Eigen
     K_ = P_*H_.transpose()*(H_*P_*H_.transpose() + R_).inverse();
 
     Eigen::Vector3d S = z - H_*X;
-//    std::cout << "-------------z------------" <<std::endl;
-//    std::cout << z.transpose() <<std::endl;
-//    std::cout << "-------------X_pred------------" <<std::endl;
-//    std::cout << X_.transpose() <<std::endl;
+
 
     X_ = X + K_*S;
 
@@ -27,15 +21,6 @@ void PoseEKFSystem::EKF(Eigen::Vector3d &X, const Eigen::Vector3d u, const Eigen
     P_ = P_ - K_*H_*P_;
 
     X = X_;
-//    std::cout << "---------X-----------" << std::endl;
-//    std::cout << X_.transpose() << std::endl;
-//    std::cout << "---------F-----------" << std::endl;
-//    std::cout << F_ << std::endl;
-//    std::cout << "---------P-----------" << std::endl;
-//    std::cout << P_ << std::endl;
-//    std::cout << "---------K-----------" << std::endl;
-//    std::cout << K_ << std::endl;
-
 }
 
 void PoseEKFSystem::PredictFromModel(Eigen::Vector3d &X, Eigen::Vector3d u, double dt)
@@ -69,6 +54,6 @@ void PoseEKFSystem::Init()
 
     P_ = P_*0.0001;
     Q_ = Q_*0.001;
-    R_ = R_*0.1;
+    R_ = R_*1;
 //    Q_(2,2) = 0.1;
 }

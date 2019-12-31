@@ -2,6 +2,8 @@
 #include <iostream>
 #include <fstream>
 
+#include <std_msgs/Bool.h>
+
 #include <geometry_msgs/PoseStamped.h>
 
 #include <nav_msgs/Odometry.h>
@@ -46,7 +48,6 @@ static SLAM3DSystem::RPYpose _previous_pose, _current_pose, _added_pose;
 
 static int _final_num_iteration, _max_iter;
 static int _LC_index = 0;
-static int _map_pub_id = 0;
 static int _min_edges_for_LC;
 
 static float _ndt_res;
@@ -71,20 +72,21 @@ static bool _save_data = false;
 
 static bool _initial_scan_loaded = false;
 static bool _has_converged = false;
-static bool _is_optimized = false;
 static bool _is_first_vertex = true;
-static bool _init_imu = false;
+static bool _init_gps = false;
+static bool _get_gps =false;
+
 
 static std::string _points_topic_name;
 static std::string _vehicle_state_topic_name;
-static std::string _gps_state_topic_name;
+static std::string _gps_topic_name;
 static std::string _save_path;
 static std::string _g2o_solver;
 static std::string _imu_topic_name;
 static pharos_msgs::StateStamped2016 _curr_states;
 static pharos_msgs::StateStamped2016 _prev_states;
 
-static int _hitlc_status;
+static int _hitlc_status = FindingCandidate;
 //static sensor_msgs::Imu _prev_imu;
 
 static ros::Time _prev_scan_time;
@@ -113,7 +115,7 @@ static Vector3d _prev_rpy(0.0, 0.0, 0.0);
 static Vector3d _rpy_rate(0.0, 0.0, 0.0);
 static Vector3d _pred_pose(0.0, 0.0, 0.0);
 
-VertexSE3WithData* _vertex_old_ptr(new VertexSE3WithData);
+//VertexSE3WithData* _vertex_old_ptr(new VertexSE3WithData());
 
 pcl::PointCloud<pcl::PointXYZI> _filtered_target_points;
 pcl::PointCloud<pcl::PointXYZI> _filtered_vertex_points;
@@ -121,7 +123,7 @@ pcl::PointCloud<pcl::PointXYZI>::Ptr _final_map_ptr(new pcl::PointCloud<pcl::Poi
 
 vector<SLAM3DSystem::ids> _LC_id_map;
 
-void SLAM(number_t *estimate, pcl::PointCloud<pcl::PointXYZI>::Ptr point_cloud);
+void SLAM(const pcl::PointCloud<pcl::PointXYZI>::Ptr point_cloud, SLAM3DSystem::RPYpose& curr_pose);
 void VertexsetToHitLCmsg(VertexSE3WithData input, VertexSE3WithData target, hitlc_msgs::InputTarget &set);
 void SaveParam();
 

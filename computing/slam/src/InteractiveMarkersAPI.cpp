@@ -103,7 +103,7 @@ void IntMarkerAPI::make6DofMarker( const std::string name, bool fixed, unsigned 
     int_marker.scale = 20;
 
     int_marker.name = name;
-    int_marker.description = "Simple 6-DOF Control";
+    int_marker.description = "";
 
     // insert a box
     makeBoxControl(int_marker);
@@ -113,7 +113,7 @@ void IntMarkerAPI::make6DofMarker( const std::string name, bool fixed, unsigned 
 
     if ( fixed )
     {
-        int_marker.description += "\n(fixed orientation)";
+        int_marker.description += "";
         control.orientation_mode = InteractiveMarkerControl::FIXED;
     }
 
@@ -123,7 +123,7 @@ void IntMarkerAPI::make6DofMarker( const std::string name, bool fixed, unsigned 
         if( interaction_mode == visualization_msgs::InteractiveMarkerControl::MOVE_3D )         mode_text = "MOVE_3D";
         if( interaction_mode == visualization_msgs::InteractiveMarkerControl::ROTATE_3D )       mode_text = "ROTATE_3D";
         if( interaction_mode == visualization_msgs::InteractiveMarkerControl::MOVE_ROTATE_3D )  mode_text = "MOVE_ROTATE_3D";
-        int_marker.description = std::string("3D Control") + (show_6dof ? " + 6-DOF controls" : "") + "\n" + mode_text;
+        int_marker.description = "";
     }
 
     if(show_6dof)

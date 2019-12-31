@@ -26,7 +26,6 @@ Eigen::Matrix4d Tml_;       ///> Transform matrix imu to left lidar
 Eigen::Matrix4d Tmr_;       ///> Transform matrix imu to right lidar
 Eigen::Matrix4d Tmt_;       ///> Transform matrix imu to top lidar
 
-double dist_ = 0.0;
 double accumulation_dist_ = 0.0;
 
 void Init(ros::NodeHandle pnh);
